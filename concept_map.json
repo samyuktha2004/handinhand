@@ -1,0 +1,48 @@
+{
+  "HELLO": {
+    "concept": "greeting",
+    "asl_signatures": [
+      "hello_0.json",
+      "hello_1.json"
+    ],
+    "bsl_target": "bsl_hello.json",
+    "description": "One-handed greeting wave (right hand at face level)",
+    "recognition_focus": ["right_hand", "face"],
+    "difficulty": "easy",
+    "status": "ready"
+  },
+  "YOU": {
+    "concept": "pronoun_second_person",
+    "asl_signatures": [],
+    "bsl_target": "bsl_you.json",
+    "description": "Two-handed point (both hands pointing outward)",
+    "recognition_focus": ["left_hand", "right_hand"],
+    "difficulty": "medium",
+    "status": "pending"
+  },
+  "GO": {
+    "concept": "movement_direction",
+    "asl_signatures": [],
+    "bsl_target": "bsl_go.json",
+    "description": "Directional movement with hands",
+    "recognition_focus": ["left_hand", "right_hand", "pose"],
+    "difficulty": "medium",
+    "status": "pending"
+  },
+  "WHERE": {
+    "concept": "question_location",
+    "asl_signatures": [],
+    "bsl_target": "bsl_where.json",
+    "description": "Two-handed outward movement with facial expression",
+    "recognition_focus": ["left_hand", "right_hand", "face"],
+    "difficulty": "medium",
+    "status": "pending"
+  },
+  "_metadata": {
+    "description": "Maps ASL sign concepts to target BSL animations",
+    "pipeline": "WLASL dataset → ASL signatures (JSON) → Cross-lingual mapping → BSL animation playback",
+    "auto_generated_from": "translation_map.json (technical)",
+    "manually_curated": true,
+    "last_updated": "2026-01-23"
+  }
+}

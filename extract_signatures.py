@@ -34,15 +34,17 @@ class SignatureExtractor:
             static_image_mode=False,
             model_complexity=1,
             smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_detection_confidence=0.3,  # LOWERED from 0.5 - catch more detections
+            min_tracking_confidence=0.3,   # LOWERED from 0.5 - better temporal tracking
         )
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.delete_after = delete_after
         self.translation_map = {}  # Track video -> signature mappings
+        self.last_valid_frame = {}  # Cache for interpolation
         print(f"✅ MediaPipe Holistic initialized")
         print(f"📁 Output directory: {self.output_dir}")
+        print(f"   Detection thresholds: confidence=0.3 (optimized for sign language)")
         if delete_after:
             print(f"🗑️  Will delete .mp4 files after processing")
 
@@ -95,6 +97,61 @@ class SignatureExtractor:
                 landmarks.append([0.0, 0.0, 0.0])
         return landmarks
 
+    def _interpolate_landmarks(self, pose_data: List[Dict]) -> List[Dict]:
+        """
+        Post-process: Fill small gaps in missing detections using temporal interpolation.
+        Helps recover from brief detection failures (1-2 frame gaps).
+        
+        Strategy: If a landmark is zero-filled for N frames, try to interpolate from
+        surrounding non-zero frames. Only interpolate small gaps (1-3 frames).
+        """
+        max_gap = 3  # Only fill gaps of 3 frames or less
+        
+        for landmark_type in ["left_hand", "right_hand", "pose", "face"]:
+            # Extract all frames for this landmark type
+            frames = [frame[landmark_type] for frame in pose_data]
+            
+            for point_idx in range(len(frames[0])):
+                # Get all values for this point across all frames
+                point_values = [frames[f][point_idx] for f in range(len(frames))]
+                
+                # Find zero-filled sequences
+                frame_idx = 0
+                while frame_idx < len(point_values):
+                    if point_values[frame_idx] == [0.0, 0.0, 0.0]:
+                        # Found start of zero sequence
+                        gap_start = frame_idx
+                        gap_size = 0
+                        
+                        # Count gap size
+                        while frame_idx < len(point_values) and point_values[frame_idx] == [0.0, 0.0, 0.0]:
+                            gap_size += 1
+                            frame_idx += 1
+                        
+                        # Try to interpolate if gap is small and bounded by valid data
+                        if gap_size <= max_gap and gap_start > 0 and frame_idx < len(point_values):
+                            before = point_values[gap_start - 1]
+                            after = point_values[frame_idx]
+                            
+                            # Only interpolate if surrounding frames have valid data
+                            if before != [0.0, 0.0, 0.0] and after != [0.0, 0.0, 0.0]:
+                                # Linear interpolation
+                                for i in range(gap_size):
+                                    alpha = (i + 1) / (gap_size + 1)
+                                    interpolated = [
+                                        before[j] + alpha * (after[j] - before[j])
+                                        for j in range(3)
+                                    ]
+                                    point_values[gap_start + i] = interpolated
+                    else:
+                        frame_idx += 1
+                
+                # Update pose_data with interpolated values
+                for f in range(len(frames)):
+                    pose_data[f][landmark_type][point_idx] = point_values[f]
+        
+        return pose_data
+
     def extract_from_video(
         self, video_path: str, sign_name: str, language: str = "BSL"
     ) -> Optional[Dict]:
@@ -146,6 +203,10 @@ class SignatureExtractor:
                 print(f"   ✓ Processed {frame_count}/{total_frames} frames")
 
         cap.release()
+
+        # Post-processing: Fill gaps in missing detections
+        print(f"   🔧 Post-processing: Interpolating missing frames...")
+        pose_data = self._interpolate_landmarks(pose_data)
 
         # Create signature JSON
         signature = {
@@ -239,6 +300,10 @@ class SignatureExtractor:
                 print(f"   ✓ Processed {frame_count}/{frame_end - frame_start} frames")
 
         cap.release()
+
+        # Post-processing: Fill gaps in missing detections
+        print(f"   🔧 Post-processing: Interpolating missing frames...")
+        pose_data = self._interpolate_landmarks(pose_data)
 
         # Create signature JSON with frame range metadata
         signature = {

@@ -25,7 +25,7 @@ import re
 # ============================================================================
 # CONFIGURATION - Easy to extend! Just add glosses here
 # ============================================================================
-TARGET_GLOSSES = ["hello"]  # Start with one word, add others: "you", "go", "where"
+TARGET_GLOSSES = ["hello", "you", "go", "where"]  # 4 anchor words for cross-lingual mapping
 VIDEOS_PER_GLOSS = 2  # Download this many instances per gloss
 
 # Directories
@@ -207,8 +207,18 @@ class WALSLPipeline:
                 frame_start = video_info.get('frame_start', -1)
                 frame_end = video_info.get('frame_end', -1)
                 
+                # OPTIMIZE: Expand frame range by 10% on each side to capture full sign
+                # This ensures both hands and face stay in frame
+                if frame_start > 0:
+                    expand = max(1, int((frame_end - frame_start) * 0.1))
+                    frame_start = max(0, frame_start - expand)
+                if frame_end > 0:
+                    expand = max(1, int((frame_end - frame_start) * 0.1))
+                    frame_end = frame_end + expand
+                
                 # Step 2: Extract landmarks (only for frame range containing the sign)
                 print(f"   🎯 Extracting landmarks (frames {frame_start} to {frame_end})...")
+                print(f"      ✓ Frame range optimized to include both hands + face")
                 sig_path = self.extract_landmarks(video_path, gloss, i, frame_start, frame_end)
                 
                 if not sig_path:

@@ -1,1 +1,153 @@
-{}
+{
+  "_metadata": {
+    "description": "Cross-Lingual Sign Language Mapping: ASL → Concept → BSL",
+    "version": "1.0",
+    "architecture": "Manual verification + Linear Transformation Matrix",
+    "concepts": "Concept IDs anchor different languages to same semantic meaning",
+    "last_updated": "2026-01-23"
+  },
+  "CONCEPT_GREETING": {
+    "concept_id": "C_GREETING_001",
+    "concept_name": "GREETING",
+    "concept_description": "Greeting gesture - wave, acknowledgment",
+    "semantic_vector": [0.2, 0.8, 0.1],
+    "asl_signatures": [
+      {
+        "gloss": "hello",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/hello_0.json",
+        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=SiBub8VD5wo",
+        "frame_range": {"frame_start": 1293, "frame_end": 1348},
+        "frames": null
+      },
+      {
+        "gloss": "hello",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/hello_1.json",
+        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=25ymRY7hbjs",
+        "frame_range": {"frame_start": 4834, "frame_end": 4931},
+        "frames": null
+      }
+    ],
+    "bsl_target": {
+      "signature_file": "assets/signatures/bsl_hello.json",
+      "language": "BSL",
+      "frames": 36
+    },
+    "difficulty": "easy",
+    "hands_involved": ["right"],
+    "pose_involvement": true,
+    "face_involvement": true,
+    "status": "verified",
+    "notes": "ASL one-handed (right) with facial expression, matches BSL greeting"
+  },
+  "CONCEPT_PRONOUN_SECOND": {
+    "concept_id": "C_PRON2_001",
+    "concept_name": "PRONOUN_SECOND_PERSON",
+    "concept_description": "Pronoun - 'you' (singular/plural)",
+    "semantic_vector": [0.5, 0.3, 0.2],
+    "asl_signatures": [
+      {
+        "gloss": "you",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/you_0.json",
+        "language": "ASL"
+      },
+      {
+        "gloss": "you",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/you_1.json",
+        "language": "ASL"
+      },
+      {
+        "gloss": "you",
+        "instance_id": 2,
+        "signature_file": "assets/signatures/you_2.json",
+        "language": "ASL"
+      }
+    ],
+    "bsl_target": {
+      "signature_file": "assets/signatures/bsl_you.json",
+      "language": "BSL",
+      "frames": 30
+    },
+    "difficulty": "medium",
+    "hands_involved": ["left", "right"],
+    "pose_involvement": true,
+    "face_involvement": false,
+    "status": "ready",
+    "notes": "Two-handed point - expecting bilateral symmetry"
+  },
+  "CONCEPT_MOTION_AWAY": {
+    "concept_id": "C_MOT_AWAY_001",
+    "concept_name": "MOTION_AWAY",
+    "concept_description": "Directional movement - 'go away', 'departure'",
+    "semantic_vector": [0.1, 0.2, 0.7],
+    "asl_signatures": [
+      {
+        "gloss": "go",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/go_0.json",
+        "language": "ASL"
+      },
+      {
+        "gloss": "go",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/go_1.json",
+        "language": "ASL"
+      },
+      {
+        "gloss": "go",
+        "instance_id": 2,
+        "signature_file": "assets/signatures/go_2.json",
+        "language": "ASL"
+      }
+    ],
+    "bsl_target": {
+      "signature_file": "assets/signatures/bsl_go.json",
+      "language": "BSL",
+      "frames": 33
+    },
+    "difficulty": "medium",
+    "hands_involved": ["left", "right"],
+    "pose_involvement": true,
+    "face_involvement": false,
+    "status": "ready",
+    "notes": "Directional with body movement"
+  },
+  "CONCEPT_LOC_QUESTION": {
+    "concept_id": "C_LOC_Q_001",
+    "concept_name": "LOCATION_QUESTION",
+    "concept_description": "Question about location - 'where'",
+    "semantic_vector": [0.3, 0.4, 0.3],
+    "asl_signatures": [
+      {
+        "gloss": "where",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/where_1.json",
+        "language": "ASL"
+      }
+    ],
+    "bsl_target": {
+      "signature_file": "assets/signatures/bsl_where.json",
+      "language": "BSL",
+      "frames": 32
+    },
+    "difficulty": "medium",
+    "hands_involved": ["left", "right"],
+    "pose_involvement": true,
+    "face_involvement": true,
+    "status": "ready",
+    "notes": "Question marker + location inquiry, bilateral hands + raised eyebrows"
+  },
+  "_embedding_matrix": {
+    "description": "Linear Transformation Matrix (Placeholder - computed during training)",
+    "purpose": "Maps ASL semantic space to BSL semantic space",
+    "dimensions": [3, 3],
+    "current_state": "pending",
+    "computation_method": "Procrustes alignment + SVD",
+    "note": "Will be derived from concept vectors after all 4 words are verified"
+  }
+}
