@@ -1,0 +1,51 @@
+{
+  "bsl_go": {
+    "signature_file": "assets/signatures/bsl_go.json",
+    "language": "BSL",
+    "frames": 33
+  },
+  "bsl_hello": {
+    "signature_file": "assets/signatures/bsl_hello.json",
+    "language": "BSL",
+    "frames": 36
+  },
+  "bsl_where": {
+    "signature_file": "assets/signatures/bsl_where.json",
+    "language": "BSL",
+    "frames": 32
+  },
+  "bsl_you": {
+    "signature_file": "assets/signatures/bsl_you.json",
+    "language": "BSL",
+    "frames": 30
+  },
+  "bsl_hello_where_are_you_going": {
+    "signature_file": "assets/signatures/bsl_hello_where_are_you_going.json",
+    "language": "BSL",
+    "frames": 82
+  },
+  "hello_0": {
+    "gloss": "hello",
+    "instance_id": 0,
+    "signature_file": "assets/signatures/hello_0.json",
+    "language": "ASL",
+    "source_url": "https://www.youtube.com/watch?v=SiBub8VD5wo",
+    "frame_range": {
+      "frame_start": 1297,
+      "frame_end": 1343
+    },
+    "frames": null
+  },
+  "hello_1": {
+    "gloss": "hello",
+    "instance_id": 1,
+    "signature_file": "assets/signatures/hello_1.json",
+    "language": "ASL",
+    "source_url": "https://www.youtube.com/watch?v=25ymRY7hbjs",
+    "frame_range": {
+      "frame_start": 4842,
+      "frame_end": 4923
+    },
+    "frames": null
+  }
+}

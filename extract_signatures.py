@@ -22,8 +22,13 @@ class SignatureExtractor:
     POSE_INDICES = [11, 12, 13, 14, 15, 16]  # Shoulders and arms
     FACE_INDICES = [70, 107, 300, 336]  # Eyebrows (left: 70,107; right: 300,336)
 
-    def __init__(self, output_dir: str = "assets/signatures"):
-        """Initialize MediaPipe Holistic detector."""
+    def __init__(self, output_dir: str = "assets/signatures", delete_after: bool = False):
+        """Initialize MediaPipe Holistic detector.
+        
+        Args:
+            output_dir: Directory to save signatures
+            delete_after: Delete source video files after processing
+        """
         self.mp_holistic = mp.solutions.holistic
         self.holistic = self.mp_holistic.Holistic(
             static_image_mode=False,
@@ -34,8 +39,12 @@ class SignatureExtractor:
         )
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.delete_after = delete_after
+        self.translation_map = {}  # Track video -> signature mappings
         print(f"✅ MediaPipe Holistic initialized")
         print(f"📁 Output directory: {self.output_dir}")
+        if delete_after:
+            print(f"🗑️  Will delete .mp4 files after processing")
 
     def _extract_landmarks(self, results) -> Dict:
         """Extract specific landmarks from MediaPipe results."""
@@ -158,13 +167,109 @@ class SignatureExtractor:
         print(f"   ✅ Extracted {frame_count} frames")
         return signature
 
-    def save_signature(self, signature: Dict, filename: Optional[str] = None) -> bool:
+    def extract_from_video_range(
+        self,
+        video_path: str,
+        sign_name: str,
+        frame_start: int = -1,
+        frame_end: int = -1,
+        language: str = "BSL",
+    ) -> Optional[Dict]:
         """
-        Save signature to JSON file.
+        Extract landmarks from a specific frame range in a video.
+        Optimized for WLASL dataset where only certain frames contain the sign.
+
+        Args:
+            video_path: Path to video file
+            sign_name: Name of the sign
+            frame_start: Starting frame number (uses first frame if -1)
+            frame_end: Ending frame number (uses last frame if -1)
+            language: Language code
+
+        Returns:
+            Dictionary with signature data, or None if extraction failed
+        """
+        if not os.path.exists(video_path):
+            print(f"❌ Video file not found: {video_path}")
+            return None
+
+        print(f"\n📹 Processing: {sign_name}")
+        print(f"   File: {video_path}")
+
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"❌ Could not open video: {video_path}")
+            return None
+
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Handle frame range
+        if frame_start == -1:
+            frame_start = 0
+        if frame_end == -1 or frame_end > total_frames:
+            frame_end = total_frames
+
+        print(f"   FPS: {fps}, Total Frames: {total_frames}")
+        print(f"   Processing frames {frame_start}-{frame_end} (sign movement only)")
+
+        # Seek to starting frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_start)
+
+        pose_data = []
+        frame_count = 0
+        current_frame = frame_start
+
+        while current_frame < frame_end:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.holistic.process(rgb_frame)
+
+            # Extract landmarks
+            frame_landmarks = self._extract_landmarks(results)
+            pose_data.append(frame_landmarks)
+            frame_count += 1
+            current_frame += 1
+
+            if frame_count % 30 == 0:
+                print(f"   ✓ Processed {frame_count}/{frame_end - frame_start} frames")
+
+        cap.release()
+
+        # Create signature JSON with frame range metadata
+        signature = {
+            "sign": sign_name,
+            "language": language,
+            "pose_data": pose_data,
+            "metadata": {
+                "fps": fps,
+                "total_frames": frame_count,
+                "frame_start": frame_start,
+                "frame_end": frame_end,
+                "landmarks_per_frame": {
+                    "left_hand": 21,
+                    "right_hand": 21,
+                    "pose": len(self.POSE_INDICES),
+                    "face": len(self.FACE_INDICES),
+                },
+            },
+        }
+
+        print(f"   ✅ Extracted {frame_count} frames (from range {frame_start}-{frame_end})")
+        return signature
+
+    def save_signature(self, signature: Dict, filename: Optional[str] = None, source_video: Optional[str] = None) -> bool:
+        """
+        Save signature to JSON file and delete source video if requested.
 
         Args:
             signature: Dictionary with signature data
             filename: Output filename (default: uses sign name)
+            source_video: Path to source video file (will be deleted if delete_after=True)
 
         Returns:
             True if saved successfully, False otherwise
@@ -177,6 +282,22 @@ class SignatureExtractor:
             with open(output_path, "w") as f:
                 json.dump(signature, f, indent=2)
             print(f"   💾 Saved to: {output_path}")
+            
+            # Track in translation map
+            self.translation_map[signature['sign']] = {
+                "signature_file": str(output_path),
+                "language": signature.get('language', 'unknown'),
+                "frames": signature['metadata']['total_frames']
+            }
+            
+            # Delete source video if requested
+            if self.delete_after and source_video and os.path.exists(source_video):
+                try:
+                    os.remove(source_video)
+                    print(f"   🗑️  Deleted: {source_video}")
+                except Exception as e:
+                    print(f"   ⚠️  Could not delete {source_video}: {e}")
+            
             return True
         except Exception as e:
             print(f"   ❌ Error saving file: {e}")
@@ -219,10 +340,28 @@ class SignatureExtractor:
             )
 
             if signature:
-                if self.save_signature(signature):
+                if self.save_signature(signature, source_video=str(video_file)):
                     success_count += 1
 
         return success_count
+    
+    def save_translation_map(self, filepath: str = "translation_map.json") -> bool:
+        """Save translation map (signature file mappings) to JSON.
+        
+        Args:
+            filepath: Output file path
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            with open(filepath, "w") as f:
+                json.dump(self.translation_map, f, indent=2)
+            print(f"\n📋 Translation map saved: {filepath}")
+            return True
+        except Exception as e:
+            print(f"❌ Error saving translation map: {e}")
+            return False
 
     def close(self):
         """Close MediaPipe resources."""
@@ -235,7 +374,8 @@ def main():
     print("🎬 Golden Signature Extractor")
     print("=" * 60)
 
-    extractor = SignatureExtractor(output_dir="assets/signatures")
+    # Set delete_after=True to remove .mp4 files after processing
+    extractor = SignatureExtractor(output_dir="assets/signatures", delete_after=True)
 
     # Process individual words from lexicon
     lexicon_dir = "assets/raw_videos/lexicon"
@@ -258,11 +398,14 @@ def main():
             benchmark_video, "bsl_hello_where_are_you_going", language="BSL"
         )
         if signature:
-            extractor.save_signature(signature)
+            extractor.save_signature(signature, source_video=benchmark_video)
             print("✅ Successfully processed benchmark video")
     else:
         print(f"⚠️  Benchmark video not found: {benchmark_video}")
 
+    # Save translation map
+    extractor.save_translation_map("translation_map.json")
+    
     extractor.close()
 
     print("\n" + "=" * 60)

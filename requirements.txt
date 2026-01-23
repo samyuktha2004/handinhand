@@ -19,6 +19,9 @@ mediapipe>=0.10.0
 # Visualization
 matplotlib>=3.7.0
 
+# YouTube video downloading (for WLASL pipeline)
+yt-dlp>=2025.01.0
+
 # Real-time Communication
 python-socketio>=5.9.0
 python-engineio>=4.7.0

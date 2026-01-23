@@ -1,7 +1,7 @@
 # Product Requirements Document: LinguaSign AI (MVP)
 
 ## 1. Project Overview
-**Goal:** A bidirectional Sign-to-Sign translator (ASL <-> ISL) using 3D avatars.
+**Goal:** A bidirectional Sign-to-Sign translator (eg: ASL <-> ISL) using 3D avatars.
 **Innovation:** Gloss-free "Embedding Route" (Vector Mapping) to preserve Non-Manual Signals (NMS) and grammar.
 
 ## 2. Target Audience
