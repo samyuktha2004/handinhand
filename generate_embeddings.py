@@ -8,13 +8,13 @@ Converts landmark sequences into fixed-size embedding vectors via:
 2. Frame flattening and averaging (Global Average Pooling)
 3. Multi-instance aggregation (average across multiple signers)
 
-Output: 512-dimensional embedding vectors saved to translation_map.json
+Output: 512-dimensional embedding vectors saved to language registries
 
 Usage:
     python3 generate_embeddings.py
     
 Result:
-    - Updates translation_map.json with asl_embedding_mean and bsl_embedding_mean
+    - Updates assets/registries/{asl,bsl}_registry.json with embedding means
     - Saves individual .npy files to assets/embeddings/{asl,bsl}/
 """
 
@@ -24,10 +24,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import os
 
+# Import registry loader for new structure
+from utils.registry_loader import RegistryLoader
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-TRANSLATION_REGISTRY = "translation_map.json"
+REGISTRIES_DIR = "assets/registries"
 EMBEDDINGS_DIR = "assets/embeddings"
 SIGNATURES_DIR = "assets/signatures"
 
@@ -44,23 +47,13 @@ class EmbeddingGenerator:
 
     def __init__(self):
         """Initialize generator."""
-        self.registry = self._load_registry()
+        self.loader = RegistryLoader()
+        self.concept_registry = self.loader.get_concept_registry()
+        self.asl_registry = self.loader.get_language_registry('asl')
+        self.bsl_registry = self.loader.get_language_registry('bsl')
         self.embeddings_asl = {}
         self.embeddings_bsl = {}
         self._ensure_directories()
-
-    def _ensure_directories(self):
-        """Create embedding directories if they don't exist."""
-        os.makedirs(os.path.join(EMBEDDINGS_DIR, "asl"), exist_ok=True)
-        os.makedirs(os.path.join(EMBEDDINGS_DIR, "bsl"), exist_ok=True)
-
-    def _load_registry(self) -> Dict:
-        """Load translation registry."""
-        if not os.path.exists(TRANSLATION_REGISTRY):
-            raise FileNotFoundError(f"Registry not found: {TRANSLATION_REGISTRY}")
-        
-        with open(TRANSLATION_REGISTRY) as f:
-            return json.load(f)
 
     def _load_signature(self, sig_file: str) -> Optional[Dict]:
         """Load signature JSON file."""
@@ -185,24 +178,25 @@ class EmbeddingGenerator:
         return aggregated.astype(np.float32)
 
     def generate_embeddings(self):
-        """Generate embeddings for all concepts in registry."""
+        """Generate embeddings for all concepts in registries."""
         print("\n" + "=" * 60)
         print("🧮 Embedding Generation Pipeline")
         print("=" * 60)
-        print(f"Registry: {TRANSLATION_REGISTRY}")
+        print(f"ASL Registry: {os.path.join(REGISTRIES_DIR, 'asl_registry.json')}")
+        print(f"BSL Registry: {os.path.join(REGISTRIES_DIR, 'bsl_registry.json')}")
         print(f"Output dir: {EMBEDDINGS_DIR}/")
         print("=" * 60)
         
-        for concept_key, concept_data in self.registry.items():
-            if concept_key.startswith("_"):
+        for concept_id, concept_data in self.asl_registry.items():
+            if concept_id.startswith("_"):
                 continue  # Skip metadata entries
             
-            concept_name = concept_data.get("concept_name", concept_key)
+            concept_name = concept_data.get("concept_name", concept_id)
             print(f"\n📊 Processing: {concept_name}")
             print("-" * 60)
             
             # ===== ASL Embeddings =====
-            asl_sigs = concept_data.get("asl_signatures", [])
+            asl_sigs = concept_data.get("signatures", [])
             if asl_sigs:
                 asl_files = [sig["signature_file"] for sig in asl_sigs]
                 print(f"   🎯 ASL: {len(asl_files)} instance(s)")
@@ -213,77 +207,100 @@ class EmbeddingGenerator:
                 asl_embedding = self._compute_aggregated_embedding(asl_files)
                 if asl_embedding is not None:
                     # Save to .npy file
-                    npy_path = concept_data.get("asl_embedding_mean_file")
+                    npy_path = concept_data.get("embedding_mean_file")
                     if npy_path:
                         os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                         np.save(npy_path, asl_embedding)
                         print(f"   ✅ ASL embedding saved: {npy_path}")
                         print(f"      Shape: {asl_embedding.shape}, Mean: {asl_embedding.mean():.4f}")
-                        
-                        # Update registry (serialize as list for JSON)
-                        concept_data["asl_embedding_mean"] = asl_embedding.tolist()
                     else:
                         print(f"   ⚠️  No embedding file path specified")
                 else:
                     print(f"   ⚠️  Failed to compute ASL embedding")
+        
+        # ===== BSL Embeddings =====
+        for concept_id, concept_data in self.bsl_registry.items():
+            if concept_id.startswith("_"):
+                continue
             
-            # ===== BSL Embeddings =====
-            bsl_target = concept_data.get("bsl_target", {})
+            concept_name = concept_data.get("concept_name", concept_id)
+            bsl_target = concept_data.get("target")
+            
             if bsl_target and bsl_target.get("signature_file"):
                 bsl_file = bsl_target["signature_file"]
-                print(f"   🎯 BSL: {Path(bsl_file).name}")
+                print(f"\n   🎯 BSL {concept_name}: {Path(bsl_file).name}")
                 
                 # Compute embedding (single BSL target)
                 bsl_embedding = self._compute_signature_embedding(bsl_file)
                 if bsl_embedding is not None:
                     # Save to .npy file
-                    npy_path = concept_data.get("bsl_embedding_mean_file")
+                    npy_path = concept_data.get("embedding_mean_file")
                     if npy_path:
                         os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                         np.save(npy_path, bsl_embedding)
                         print(f"   ✅ BSL embedding saved: {npy_path}")
                         print(f"      Shape: {bsl_embedding.shape}, Mean: {bsl_embedding.mean():.4f}")
-                        
-                        # Update registry
-                        concept_data["bsl_embedding_mean"] = bsl_embedding.tolist()
                     else:
                         print(f"   ⚠️  No embedding file path specified")
                 else:
                     print(f"   ⚠️  Failed to compute BSL embedding")
 
     def save_registry(self):
-        """Save updated registry with embeddings back to JSON."""
-        with open(TRANSLATION_REGISTRY, 'w') as f:
-            json.dump(self.registry, f, indent=2)
-        print(f"\n✅ Registry updated: {TRANSLATION_REGISTRY}")
+        """Save updated registries with embeddings back to JSON."""
+        asl_path = os.path.join(REGISTRIES_DIR, 'asl_registry.json')
+        bsl_path = os.path.join(REGISTRIES_DIR, 'bsl_registry.json')
+        
+        with open(asl_path, 'w') as f:
+            json.dump(self.asl_registry, f, indent=2)
+        print(f"\n✅ ASL registry updated: {asl_path}")
+        
+        with open(bsl_path, 'w') as f:
+            json.dump(self.bsl_registry, f, indent=2)
+        print(f"✅ BSL registry updated: {bsl_path}")
 
     def compute_similarity_matrix(self) -> Optional[np.ndarray]:
         """
         Compute cosine similarity matrix between ASL and BSL embeddings.
-        
-        Returns: Matrix of shape (4, 4) showing similarity between each concept pair.
+
+        Returns: Matrix showing similarity between each concept pair.
         """
-        from scipy.spatial.distance import cosine
-        
         print("\n" + "=" * 60)
-        print("📊 Cosine Similarity Analysis")
+        print("📈 ASL-BSL Similarity Analysis")
         print("=" * 60)
+        
+        from scipy.spatial.distance import cosine
         
         concepts = []
         asl_embeddings = []
         bsl_embeddings = []
         
-        for concept_key, concept_data in self.registry.items():
-            if concept_key.startswith("_"):
+        # Load embeddings from registries
+        for concept_id in self.asl_registry.keys():
+            if concept_id.startswith('_'):
                 continue
             
-            asl_emb = concept_data.get("asl_embedding_mean")
-            bsl_emb = concept_data.get("bsl_embedding_mean")
+            if concept_id not in self.bsl_registry:
+                continue
             
-            if asl_emb and bsl_emb:
-                concepts.append(concept_data["concept_name"])
-                asl_embeddings.append(np.array(asl_emb))
-                bsl_embeddings.append(np.array(bsl_emb))
+            asl_file = self.asl_registry[concept_id].get("embedding_mean_file")
+            bsl_file = self.bsl_registry[concept_id].get("embedding_mean_file")
+            
+            try:
+                if asl_file and os.path.exists(asl_file):
+                    asl_emb = np.load(asl_file)
+                else:
+                    continue
+                
+                if bsl_file and os.path.exists(bsl_file):
+                    bsl_emb = np.load(bsl_file)
+                else:
+                    continue
+                
+                concepts.append(self.asl_registry[concept_id].get("concept_name"))
+                asl_embeddings.append(asl_emb)
+                bsl_embeddings.append(bsl_emb)
+            except Exception as e:
+                print(f"   ⚠️  Error loading embeddings for {concept_id}: {e}")
         
         if not concepts:
             print("⚠️  No embeddings found for similarity analysis")
@@ -314,7 +331,8 @@ def main():
         print("✅ Embedding Generation Complete!")
         print("=" * 60)
         print(f"   Output directory: {EMBEDDINGS_DIR}/")
-        print(f"   Registry updated: {TRANSLATION_REGISTRY}")
+        print(f"   ASL registry: {os.path.join(REGISTRIES_DIR, 'asl_registry.json')}")
+        print(f"   BSL registry: {os.path.join(REGISTRIES_DIR, 'bsl_registry.json')}")
         print("=" * 60)
         
     except Exception as e:

@@ -33,6 +33,9 @@ from collections import deque
 from dataclasses import dataclass
 import sys
 
+# Import registry loader for new multi-language structure
+from utils.registry_loader import RegistryLoader
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -77,7 +80,9 @@ class RecognitionEngine:
     def __init__(self, debug: bool = False):
         """Initialize recognition engine."""
         self.debug = debug
-        self.registry = self._load_registry()
+        self.loader = RegistryLoader()
+        self.concept_registry = self.loader.get_concept_registry()
+        self.asl_registry = self.loader.get_language_registry('asl')
         self.embeddings = self._load_embeddings()
         self.landmark_window = deque(maxlen=WINDOW_SIZE)
         self.mp_holistic = mp.solutions.holistic
@@ -98,29 +103,21 @@ class RecognitionEngine:
             print("   - Cosine similarity scores: VISIBLE (per-concept)")
             print("   - Tier 4 validation: ACTIVE (cross-concept check)")
 
-    def _load_registry(self) -> Dict:
-        """Load translation registry."""
-        if not os.path.exists(TRANSLATION_REGISTRY):
-            raise FileNotFoundError(f"Registry not found: {TRANSLATION_REGISTRY}")
-        
-        with open(TRANSLATION_REGISTRY) as f:
-            return json.load(f)
-
     def _load_embeddings(self) -> Dict[str, np.ndarray]:
         """Load all ASL embeddings from .npy files."""
         embeddings = {}
         
-        for concept_key, concept_data in self.registry.items():
-            if concept_key.startswith("_"):
+        for concept_id, concept_data in self.asl_registry.items():
+            if concept_id.startswith("_"):
                 continue
             
             concept_name = concept_data.get("concept_name")
-            emb_file = concept_data.get("asl_embedding_mean_file")
+            emb_file = concept_data.get("embedding_mean_file")
             
             if emb_file and os.path.exists(emb_file):
                 embeddings[concept_name] = np.load(emb_file)
         
-        print(f"✅ Loaded {len(embeddings)} concept embeddings")
+        print(f"✅ Loaded {len(embeddings)} concept embeddings from ASL registry")
         return embeddings
 
     def _normalize_landmarks(self, landmarks: np.ndarray) -> np.ndarray:

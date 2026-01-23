@@ -39,6 +39,10 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from scipy.spatial.distance import cosine
+from collections import defaultdict
+
+# Import registry loader for new multi-language structure
+from utils.registry_loader import RegistryLoader
 
 # Socket.io optional import
 try:
@@ -75,6 +79,67 @@ COLOR_BAR_MED = (0, 165, 255)      # Orange: medium
 COLOR_BAR_HIGH = (0, 255, 0)       # Green: high
 COLOR_MATCH = (0, 255, 255)        # Cyan: matched
 COLOR_TEXT = (255, 255, 255)       # White: text
+
+
+# ============================================================================
+# TEMPORAL SMOOTHING FILTER (Hysteresis for Stable Recognition)
+# ============================================================================
+
+class TemporalFilter:
+    """
+    Hysteresis filter for stable recognition.
+    Requires N consecutive frames above threshold before confirming match.
+    
+    Problem: Webcam jitter causes frame-to-frame variation (0.81 → 0.79 → 0.81)
+    Solution: Only confirm when same concept stays >0.80 for 5 consecutive frames (~167ms @ 30fps)
+    """
+    
+    def __init__(self, min_frames: int = 5, threshold: float = 0.80):
+        """
+        Args:
+            min_frames: Frames needed to confirm (5 frames @ 30fps = 167ms)
+            threshold: Similarity threshold for counting
+        """
+        self.min_frames = min_frames
+        self.threshold = threshold
+        self.frame_count = defaultdict(int)
+        self.last_concept = None
+        self.confirmed_concept = None
+    
+    def update(self, best_concept: str, similarity: float) -> Optional[str]:
+        """
+        Process recognition result with temporal smoothing.
+        
+        Returns:
+            Confirmed concept if >= min_frames above threshold, else None
+        """
+        if similarity >= self.threshold:
+            # Same concept as last frame: increment counter
+            if best_concept == self.last_concept:
+                self.frame_count[best_concept] += 1
+            else:
+                # Concept changed: reset counters
+                self.frame_count = defaultdict(int)
+                self.frame_count[best_concept] = 1
+            
+            # Check if confirmed
+            if self.frame_count[best_concept] >= self.min_frames:
+                self.confirmed_concept = best_concept
+                return best_concept
+        else:
+            # Below threshold: reset
+            if self.last_concept:
+                self.frame_count[self.last_concept] = 0
+            self.confirmed_concept = None
+        
+        self.last_concept = best_concept
+        return None
+    
+    def reset(self):
+        """Reset filter state."""
+        self.frame_count = defaultdict(int)
+        self.last_concept = None
+        self.confirmed_concept = None
 
 
 # ============================================================================
@@ -119,7 +184,11 @@ class RecognitionEngineUI:
         """
         self.debug = debug
         self.registry_path = registry_path
-        self.registry = {}
+        self.loader = RegistryLoader()
+        self.concept_registry = self.loader.get_concept_registry()
+        self.asl_registry = self.loader.get_language_registry('asl')
+        self.bsl_registry = self.loader.get_language_registry('bsl')
+        self.registry = {}  # Legacy compatibility
         self.embeddings = {}
         self.concept_names = []
         self.cooldown_ms = cooldown_ms
@@ -129,6 +198,9 @@ class RecognitionEngineUI:
         self.sio = None
         self.socket_connected = False
         self._setup_socket_io()
+
+        # Temporal smoothing filter (5 frames @ 0.80+)
+        self.temporal_filter = TemporalFilter(min_frames=5, threshold=0.80)
 
         # Cooldown state machine
         self.last_match_time = 0
@@ -150,12 +222,11 @@ class RecognitionEngineUI:
         self.golden_signatures = {}  # Cached golden poses
 
         # Load data
-        self._load_registry()
         self._load_embeddings()
         self._load_golden_signatures()
 
         print(f"✅ Engine initialized")
-        print(f"   Concepts: {', '.join(self.concept_names)}")
+        print(f"   Concepts: {len(self.concept_names)}")
         print(f"   Debug: {'ON' if self.debug else 'OFF'}")
         print(
             f"   Socket.io: {'ENABLED' if socket_url and HAS_SOCKETIO else 'DISABLED'}"
@@ -194,45 +265,51 @@ class RecognitionEngineUI:
         except Exception as e:
             print(f"⚠️  Failed to connect Socket.io: {e}")
 
-    def _load_registry(self):
-        """Load translation registry."""
-        try:
-            with open(self.registry_path) as f:
-                self.registry = json.load(f)
-            print(f"✅ Registry loaded: {len(self.registry)} concepts")
-        except FileNotFoundError:
-            print(f"❌ Registry not found: {self.registry_path}")
-            sys.exit(1)
-
     def _load_embeddings(self):
-        """Load ASL embeddings."""
-        for concept_id, concept_data in self.registry.items():
-            asl_file = concept_data.get("asl_embedding_mean_file")
-            if not asl_file:
+        """Load ASL embeddings from ASL registry."""
+        for concept_id, concept_data in self.asl_registry.items():
+            if concept_id.startswith('_'):
+                continue
+                
+            emb_file = concept_data.get("embedding_mean_file")
+            if not emb_file:
                 continue
 
             try:
-                embedding = np.load(asl_file)
-                self.embeddings[concept_id] = embedding
-                self.concept_names.append(concept_id)
+                embedding = np.load(emb_file)
+                concept_name = concept_data.get("concept_name")
+                self.embeddings[concept_name] = embedding
+                self.concept_names.append(concept_name)
             except FileNotFoundError:
-                print(f"⚠️  Embedding not found: {asl_file}")
+                print(f"⚠️  Embedding not found: {emb_file}")
 
     def _load_golden_signatures(self):
-        """Preload golden signature poses for ghost skeleton."""
-        for concept_id, concept_data in self.registry.items():
-            asl_file = concept_data.get("asl_target_file")
-            if not asl_file:
+        """Preload golden signature poses for ghost skeleton from ASL registry."""
+        for concept_id, concept_data in self.asl_registry.items():
+            if concept_id.startswith('_'):
+                continue
+            
+            signatures = concept_data.get("signatures", [])
+            if not signatures:
+                continue
+
+            # Use first signature as golden reference
+            first_sig = signatures[0]
+            sig_file = first_sig.get("signature_file")
+            
+            if not sig_file:
                 continue
 
             try:
-                with open(asl_file) as f:
+                with open(sig_file) as f:
                     data = json.load(f)
                     # Extract first frame's pose (has highest detail)
                     if isinstance(data, dict) and "frames" in data:
-                        self.golden_signatures[concept_id] = data["frames"][0]
+                        concept_name = concept_data.get("concept_name")
+                        self.golden_signatures[concept_name] = data["frames"][0]
                     elif isinstance(data, list) and len(data) > 0:
-                        self.golden_signatures[concept_id] = data[0]
+                        concept_name = concept_data.get("concept_name")
+                        self.golden_signatures[concept_name] = data[0]
             except Exception:
                 pass  # Silent fail for missing signatures
 
@@ -342,6 +419,9 @@ class RecognitionEngineUI:
         second_concept, second_score = sorted_scores[1] if len(sorted_scores) > 1 else (None, 0.0)
         gap_to_second = best_score - second_score
 
+        # PHASE 3: Apply temporal smoothing filter (hysteresis for stable recognition)
+        confirmed_concept = self.temporal_filter.update(best_concept, best_score)
+
         # Confidence level
         if best_score >= 0.90:
             confidence_level = "high"
@@ -350,9 +430,13 @@ class RecognitionEngineUI:
         else:
             confidence_level = "low"
 
-        # Verification status
-        if best_score >= COSINE_SIM_THRESHOLD and gap_to_second >= TIER_4_GAP_THRESHOLD:
+        # Verification status (now with temporal smoothing)
+        if confirmed_concept is not None:
+            # Concept confirmed by temporal filter
             verification_status = "verified"
+        elif best_score >= COSINE_SIM_THRESHOLD and gap_to_second >= TIER_4_GAP_THRESHOLD:
+            # High score but not yet confirmed
+            verification_status = "pending_confirmation"
         elif best_score < COSINE_SIM_THRESHOLD:
             verification_status = "low_confidence"
         else:
@@ -360,12 +444,12 @@ class RecognitionEngineUI:
 
         # BSL target
         bsl_target_file = None
-        if verification_status == "verified":
-            concept_data = self.registry.get(best_concept, {})
+        if confirmation_concept := (confirmed_concept or best_concept):
+            concept_data = self.registry.get(confirmation_concept, {})
             bsl_target_file = concept_data.get("bsl_target_file")
 
         return RecognitionResult(
-            concept=best_concept,
+            concept=confirmed_concept or best_concept,  # Use confirmed concept if available
             similarity_score=best_score,
             confidence_level=confidence_level,
             verification_status=verification_status,
@@ -374,6 +458,60 @@ class RecognitionEngineUI:
             gap_to_second=gap_to_second,
             frame_window_complete=True,
         )
+
+    def _draw_winner_display(self, frame: np.ndarray, confirmed_concept: str,
+                              bsl_target_path: Optional[str] = None) -> np.ndarray:
+        """
+        Draw large green text for confirmed match (PHASE 3).
+        
+        Shows:
+        1. Large "✓ CONCEPT" in bright green
+        2. Optional: "→ bsl_target_name" in cyan below
+        """
+        if not confirmed_concept:
+            return frame
+        
+        h, w, _ = frame.shape
+        
+        # Large GREEN centered text
+        font = cv2.FONT_HERSHEY_BOLD
+        font_scale = 3.0
+        thickness = 5
+        color_green = (0, 255, 0)        # Bright green for winner
+        color_cyan = (0, 255, 255)       # Cyan for BSL target
+        
+        # Main winner text
+        text = f"✓ {confirmed_concept}"
+        text_size, baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        x = (w - text_size[0]) // 2
+        y = (h // 2) - 50
+        
+        # Draw winner text with semi-transparent background box
+        box_margin = 20
+        cv2.rectangle(frame, 
+                     (x - box_margin, y - text_size[1] - box_margin),
+                     (x + text_size[0] + box_margin, y + baseline + box_margin),
+                     (0, 100, 0),    # Dark green background
+                     -1)
+        cv2.rectangle(frame,
+                     (x - box_margin, y - text_size[1] - box_margin),
+                     (x + text_size[0] + box_margin, y + baseline + box_margin),
+                     color_green,    # Green border
+                     2)
+        
+        # Draw winner text
+        cv2.putText(frame, text, (x, y), font, font_scale, color_green, thickness)
+        
+        # Optional: BSL target name below
+        if bsl_target_path:
+            bsl_name = Path(bsl_target_path).stem  # Get filename without extension
+            target_text = f"→ {bsl_name}"
+            target_size, _ = cv2.getTextSize(target_text, cv2.FONT_HERSHEY_SIMPLEX, 1.8, 2)
+            target_x = (w - target_size[0]) // 2
+            cv2.putText(frame, target_text, (target_x, y + 100),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.8, color_cyan, 2)
+        
+        return frame
 
     def _draw_dashboard(self, frame: np.ndarray, result: RecognitionResult) -> np.ndarray:
         """Draw interactive dashboard on frame."""
@@ -410,21 +548,48 @@ class RecognitionEngineUI:
 
             # Bar fill (colored based on score)
             fill_width = int(bar_width * score)
-            if score >= 0.80:
-                bar_color = COLOR_BAR_HIGH
+            
+            # PHASE 3: Enhanced color coding
+            # Confirmed concept gets bright green
+            if concept == result.concept and result.verification_status == "verified":
+                bar_color = (0, 255, 0)  # Bright GREEN for confirmed
+            elif score >= 0.90:
+                bar_color = COLOR_BAR_HIGH  # Green for high score
+            elif score >= 0.80:
+                bar_color = (0, 200, 100)  # Dark green for medium-high
             elif score >= 0.50:
-                bar_color = COLOR_BAR_MED
+                bar_color = COLOR_BAR_MED  # Orange for medium
+            elif score >= 0.20:
+                bar_color = (0, 100, 200)  # Light orange for low
             else:
-                bar_color = COLOR_BAR_LOW
+                bar_color = COLOR_BAR_LOW  # Red for very low
 
             cv2.rectangle(frame, (bar_x_left, y_pos), (bar_x_left + fill_width, y_pos + bar_height), bar_color, -1)
 
-            # Border
-            cv2.rectangle(frame, (bar_x_left, y_pos), (bar_x_left + bar_width, y_pos + bar_height), COLOR_TEXT, 1)
+            # Threshold line (0.80) - shows confirmation threshold
+            threshold_x = bar_x_left + int(bar_width * COSINE_SIM_THRESHOLD)
+            cv2.line(frame, (threshold_x, y_pos), (threshold_x, y_pos + bar_height), (255, 255, 255), 1)
 
-            # Label + score
+            # Border (brighter for confirmed)
+            if concept == result.concept and result.verification_status == "verified":
+                border_color = (0, 255, 0)  # GREEN border for confirmed
+                border_thickness = 2
+            else:
+                border_color = COLOR_TEXT
+                border_thickness = 1
+            cv2.rectangle(frame, (bar_x_left, y_pos), (bar_x_left + bar_width, y_pos + bar_height), 
+                         border_color, border_thickness)
+
+            # Label + score (brighter for confirmed)
             label_text = f"{concept[:8]:8s} {score:.2f}"
-            cv2.putText(frame, label_text, (bar_x_left + bar_width + 10, y_pos + 15), font, font_scale, COLOR_TEXT, thickness)
+            if concept == result.concept and result.verification_status == "verified":
+                label_color = (0, 255, 0)  # GREEN text for confirmed
+                label_thickness = 2
+            else:
+                label_color = COLOR_TEXT
+                label_thickness = thickness
+            cv2.putText(frame, label_text, (bar_x_left + bar_width + 10, y_pos + 15), 
+                       font, font_scale, label_color, label_thickness)
 
         # Window progress indicator
         window_pct = len(self.landmark_window) / WINDOW_SIZE * 100
@@ -520,18 +685,45 @@ class RecognitionEngineUI:
         return frame
 
     def _emit_socket(self, concept_id: str, score: float):
-        """Emit recognition result via Socket.io."""
+        """Emit recognition result via Socket.io.
+        
+        PHASE 3: Enhanced emission with translation_event structure
+        
+        Emits two complementary events:
+        1. 'sign_recognized' - Legacy (backward compatible)
+        2. 'translation_event' - New (Phase 3, with full metadata)
+        """
         if not self.socket_url or not self.sio or not self.socket_connected:
             return
 
         try:
-            payload = {
+            # Get concept metadata
+            concept_data = self.concept_registry.get(concept_id, {})
+            concept_name = concept_data.get("concept_name", concept_id)
+            bsl_target_path = concept_data.get("bsl_target_file", "")
+            
+            # Legacy event (backward compatible)
+            legacy_payload = {
                 "concept": concept_id,
                 "score": float(score),
                 "timestamp": time.time(),
             }
-            self.sio.emit("sign_recognized", payload)
-            print(f"📡 Emitted: {payload}")
+            self.sio.emit("sign_recognized", legacy_payload)
+            
+            # Phase 3: translation_event (full metadata)
+            translation_payload = {
+                "concept_id": concept_id,
+                "concept_name": concept_name,
+                "bsl_target_path": str(bsl_target_path) if bsl_target_path else None,
+                "similarity_score": float(score),
+                "timestamp": time.time(),
+                "source": "recognition_engine_ui",
+                "verification_status": "verified"
+            }
+            self.sio.emit("translation_event", translation_payload)
+            
+            if self.debug:
+                print(f"📡 Emitted translation_event: {concept_name} → {Path(bsl_target_path).name if bsl_target_path else 'N/A'}")
         except Exception as e:
             print(f"⚠️  Socket.io emit failed: {e}")
 
@@ -543,6 +735,7 @@ class RecognitionEngineUI:
             return
 
         print(f"🎥 Camera opened. Press ESC or 'q' to quit, 'r' to reset window")
+        print(f"🔄 Temporal smoothing: {self.temporal_filter.min_frames} frames @ {self.temporal_filter.threshold:.2f}+ threshold")
 
         try:
             while True:
@@ -557,6 +750,10 @@ class RecognitionEngineUI:
 
                 # Draw dashboard
                 frame = self._draw_dashboard(frame, result)
+
+                # PHASE 3: Draw winner display if verified
+                if result.verification_status == "verified":
+                    frame = self._draw_winner_display(frame, result.concept, result.bsl_target_file)
 
                 # Draw ghost skeleton (if debug + verified)
                 if self.debug:
@@ -581,7 +778,8 @@ class RecognitionEngineUI:
                     break
                 elif key == ord("r"):  # r
                     self.landmark_window = []
-                    print("🔄 Window reset")
+                    self.temporal_filter.reset()
+                    print("🔄 Window and temporal filter reset")
 
         finally:
             cap.release()

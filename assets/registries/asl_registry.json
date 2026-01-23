@@ -1,0 +1,143 @@
+{
+  "_metadata": {
+    "language": "asl",
+    "purpose": "ASL signatures and embeddings for recognition",
+    "version": "1.0",
+    "last_updated": "2026-01-23T21:59:14.255617",
+    "description": "American Sign Language reference dataset - extracted from translation_map.json"
+  },
+  "C_GREETING_001": {
+    "concept_name": "GREETING",
+    "concept_description": "Greeting gesture - wave, acknowledgment",
+    "signatures": [
+      {
+        "gloss": "hello",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/asl/hello_0.json",
+        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=SiBub8VD5wo",
+        "frame_range": {
+          "frame_start": 1293,
+          "frame_end": 1348
+        },
+        "frames": 46,
+        "verification_status": "auto_verified"
+      },
+      {
+        "gloss": "hello",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/asl/hello_1.json",
+        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=25ymRY7hbjs",
+        "frame_range": {
+          "frame_start": 4834,
+          "frame_end": 4931
+        },
+        "frames": 50,
+        "verification_status": "auto_verified"
+      }
+    ],
+    "embedding_mean_file": "assets/embeddings/asl/hello_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": true
+    }
+  },
+  "C_PRON2_001": {
+    "concept_name": "PRONOUN_SECOND_PERSON",
+    "concept_description": "Pronoun - 'you' (singular/plural)",
+    "signatures": [
+      {
+        "gloss": "you",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/asl/you_0.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      },
+      {
+        "gloss": "you",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/asl/you_1.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      },
+      {
+        "gloss": "you",
+        "instance_id": 2,
+        "signature_file": "assets/signatures/asl/you_2.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      }
+    ],
+    "embedding_mean_file": "assets/embeddings/asl/you_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": false
+    }
+  },
+  "C_MOT_AWAY_001": {
+    "concept_name": "MOTION_AWAY",
+    "concept_description": "Directional movement - 'go away', 'departure'",
+    "signatures": [
+      {
+        "gloss": "go",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/asl/go_0.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      },
+      {
+        "gloss": "go",
+        "instance_id": 1,
+        "signature_file": "assets/signatures/asl/go_1.json",
+        "language": "ASL",
+        "verification_status": "manual_review"
+      },
+      {
+        "gloss": "go",
+        "instance_id": 2,
+        "signature_file": "assets/signatures/asl/go_2.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      }
+    ],
+    "embedding_mean_file": "assets/embeddings/asl/go_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": false
+    }
+  },
+  "C_LOC_Q_001": {
+    "concept_name": "LOCATION_QUESTION",
+    "concept_description": "Question about location - 'where'",
+    "signatures": [
+      {
+        "gloss": "where",
+        "instance_id": 0,
+        "signature_file": "assets/signatures/asl/where_0.json",
+        "language": "ASL",
+        "verification_status": "auto_verified"
+      }
+    ],
+    "embedding_mean_file": "assets/embeddings/asl/where_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": true
+    }
+  }
+}

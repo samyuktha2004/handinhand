@@ -9,7 +9,7 @@ Workflow:
   2. Download first N video instances using yt-dlp
   3. Extract MediaPipe landmarks & save as JSON
   4. Delete .mp4 files after extraction
-  5. Update translation_map.json
+  5. Update ASL registry (assets/registries/asl_registry.json)
 
 Make it extensible: Just update TARGET_GLOSSES to add new words!
 """
@@ -21,6 +21,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import re
+
+from utils.registry_loader import RegistryLoader
 
 # ============================================================================
 # CONFIGURATION - Easy to extend! Just add glosses here
@@ -38,6 +40,7 @@ WLASL_JSON = "assets/wlasl_data/WLASL_v0.3.json"
 DOWNLOAD_DIR = "assets/raw_videos/lexicon"
 SIGNATURES_DIR = "assets/signatures"
 SIGNATURES_ASL_DIR = "assets/signatures/asl"
+REGISTRIES_DIR = "assets/registries"
 SIGNATURES_BSL_DIR = "assets/signatures/bsl"
 OUTPUT_MAP = "translation_map.json"
 
@@ -55,7 +58,8 @@ class WALSLPipeline:
         self.wlasl_data = self._load_wlasl()
         self.downloaded_videos = []
         self.extracted_signatures = {}
-        self.translation_map = self._load_translation_map()
+        self.loader = RegistryLoader()
+        self.asl_registry = self.loader.get_language_registry('asl')
         self._ensure_directories()
 
     def _load_wlasl(self) -> List[Dict]:
@@ -73,19 +77,14 @@ class WALSLPipeline:
         os.makedirs("assets/embeddings/asl", exist_ok=True)
         os.makedirs("assets/embeddings/bsl", exist_ok=True)
         os.makedirs("assets/embeddings/concept", exist_ok=True)
+        os.makedirs(REGISTRIES_DIR, exist_ok=True)
 
-    def _load_translation_map(self) -> Dict:
-        """Load existing translation map or create new one."""
-        if os.path.exists(OUTPUT_MAP):
-            with open(OUTPUT_MAP) as f:
-                return json.load(f)
-        return {}
-
-    def _save_translation_map(self):
-        """Save translation map to JSON."""
-        with open(OUTPUT_MAP, 'w') as f:
-            json.dump(self.translation_map, f, indent=2)
-        print(f"💾 Updated: {OUTPUT_MAP}")
+    def _save_asl_registry(self):
+        """Save ASL registry to JSON."""
+        registry_path = os.path.join(REGISTRIES_DIR, 'asl_registry.json')
+        with open(registry_path, 'w') as f:
+            json.dump(self.asl_registry, f, indent=2)
+        print(f"💾 Updated: {registry_path}")
 
     def find_gloss_videos(self, gloss: str) -> List[Dict]:
         """Find video instances for a gloss in WLASL."""
@@ -312,23 +311,39 @@ class WALSLPipeline:
                     print(f"      🔍 Keeping video for manual review")
                     verification_status = "manual_review"
                 
-                # Step 3: Update translation map
-                map_key = f"{gloss}_{i}"
-                self.translation_map[map_key] = {
+                # Step 3: Update ASL registry
+                # Find or create concept_id for this gloss
+                # (In production, this would be linked to concept map)
+                concept_id = f"C_{gloss.upper()}_001"  # Placeholder ID
+                
+                if concept_id not in self.asl_registry:
+                    self.asl_registry[concept_id] = {
+                        "concept_name": gloss.upper(),
+                        "concept_description": f"ASL for '{gloss}'",
+                        "signatures": [],
+                        "embedding_mean_file": f"assets/embeddings/asl/{gloss}_mean.npy",
+                        "metadata": {
+                            "hands_involved": None,
+                            "pose_involvement": True,
+                            "face_involvement": True
+                        }
+                    }
+                
+                # Add signature entry
+                sig_entry = {
                     "gloss": gloss,
                     "instance_id": i,
                     "signature_file": os.path.relpath(sig_path),
-                    "language": "ASL",
                     "source_url": url,
                     "frame_range": {
                         "frame_start": frame_start,
                         "frame_end": frame_end
                     },
                     "frames": quality_data['frames'],
-                    "quality_score": quality_data['quality_score'],
-                    "verification_status": verification_status,
-                    "zero_fill_pct": quality_data['zero_fill_pct']
+                    "verification_status": verification_status
                 }
+                
+                self.asl_registry[concept_id]["signatures"].append(sig_entry)
                 
                 success_count += 1
                 
@@ -376,15 +391,15 @@ class WALSLPipeline:
                 print(f"❌ Failed to process {gloss}: {str(e)}")
                 continue
         
-        # Save final translation map
+        # Save final ASL registry
         print(f"\n{'=' * 60}")
-        self._save_translation_map()
+        self._save_asl_registry()
         
         print(f"\n{'=' * 60}")
         print(f"✅ Pipeline Complete!")
         print(f"   Total signatures extracted: {total_processed}")
         print(f"   All .mp4 files cleaned up")
-        print(f"   Translation map updated: {OUTPUT_MAP}")
+        print(f"   ASL registry updated: assets/registries/asl_registry.json")
         print("=" * 60)
         
         return total_processed > 0

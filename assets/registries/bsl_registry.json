@@ -1,0 +1,80 @@
+{
+  "_metadata": {
+    "language": "bsl",
+    "purpose": "BSL target signatures and embeddings for output",
+    "version": "1.0",
+    "last_updated": "2026-01-23T21:59:14.255635",
+    "description": "British Sign Language reference dataset - extracted from translation_map.json"
+  },
+  "C_GREETING_001": {
+    "concept_name": "GREETING",
+    "concept_description": "Greeting gesture - wave, acknowledgment",
+    "target": {
+      "signature_file": "assets/signatures/bsl/hello.json",
+      "language": "BSL",
+      "frames": 36
+    },
+    "embedding_mean_file": "assets/embeddings/bsl/hello_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": true
+    }
+  },
+  "C_PRON2_001": {
+    "concept_name": "PRONOUN_SECOND_PERSON",
+    "concept_description": "Pronoun - 'you' (singular/plural)",
+    "target": {
+      "signature_file": "assets/signatures/bsl/you.json",
+      "language": "BSL",
+      "frames": 30
+    },
+    "embedding_mean_file": "assets/embeddings/bsl/you_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": false
+    }
+  },
+  "C_MOT_AWAY_001": {
+    "concept_name": "MOTION_AWAY",
+    "concept_description": "Directional movement - 'go away', 'departure'",
+    "target": {
+      "signature_file": "assets/signatures/bsl/go.json",
+      "language": "BSL",
+      "frames": 33
+    },
+    "embedding_mean_file": "assets/embeddings/bsl/go_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": false
+    }
+  },
+  "C_LOC_Q_001": {
+    "concept_name": "LOCATION_QUESTION",
+    "concept_description": "Question about location - 'where'",
+    "target": {
+      "signature_file": "assets/signatures/bsl/where.json",
+      "language": "BSL",
+      "frames": 32
+    },
+    "embedding_mean_file": "assets/embeddings/bsl/where_mean.npy",
+    "metadata": {
+      "hands_involved": [
+        "left",
+        "right"
+      ],
+      "pose_involvement": true,
+      "face_involvement": true
+    }
+  }
+}
