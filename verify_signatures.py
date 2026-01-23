@@ -10,6 +10,10 @@ Loads JSON golden signatures and:
 - Exports animation as video (optional)
 """
 
+# Configure matplotlib backend for interactive 3D visualization on macOS
+import matplotlib
+matplotlib.use('Qt5Agg')  # Use Qt5 for interactive 3D plots (requires PyQt5)
+
 import json
 import numpy as np
 import matplotlib.pyplot as plt
