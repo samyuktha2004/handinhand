@@ -9,6 +9,7 @@ Your system: Python 3.13.2
 ### Solution: Switch to Python 3.12
 
 #### Option A: Using Homebrew (macOS)
+
 ```bash
 brew install python@3.12
 /opt/homebrew/bin/python3.12 -m venv venv
@@ -17,6 +18,7 @@ pip install -r requirements.txt
 ```
 
 #### Option B: Using pyenv (Recommended for multiple Python versions)
+
 ```bash
 # Install pyenv
 brew install pyenv
@@ -32,9 +34,11 @@ pyenv local 3.12.0
 ```
 
 #### Option C: Using Python.org
+
 1. Download Python 3.12 from https://www.python.org/downloads/
 2. Install it
 3. Use it to create the venv:
+
 ```bash
 /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 -m venv venv
 source venv/bin/activate
@@ -51,6 +55,7 @@ pip install -r requirements.txt
 ```
 
 This script will:
+
 - ✅ Create and activate a virtual environment
 - ✅ Install all dependencies
 - ✅ Verify core packages work
@@ -61,6 +66,7 @@ This script will:
 ## Installation Methods
 
 ### Option 1: Advanced Setup Script (RECOMMENDED)
+
 **Best for**: Most users, handles errors gracefully
 
 ```bash
@@ -68,6 +74,7 @@ This script will:
 ```
 
 ### Option 2: Poetry (BEST for reproducibility)
+
 **Best for**: Production environments, team collaboration
 
 Poetry ensures exact dependency versions across all machines.
@@ -84,6 +91,7 @@ poetry shell
 ```
 
 **Why Poetry?**
+
 - ✅ Locks exact versions (reproducible across machines)
 - ✅ Better dependency conflict resolution
 - ✅ Simpler to manage and update packages
@@ -123,11 +131,13 @@ python3 --version
 ---
 
 ### Issue: `ModuleNotFoundError: No module named 'matplotlib'`
+
 ```bash
 pip install --no-cache-dir -r requirements.txt
 ```
 
 **Solution 2: Install packages individually**
+
 ```bash
 pip install --upgrade numpy scipy pandas scikit-learn matplotlib Pillow
 pip install --no-cache-dir opencv-python mediapipe
@@ -135,6 +145,7 @@ pip install --upgrade python-socketio python-engineio
 ```
 
 **Solution 3: Use Poetry**
+
 ```bash
 pip install poetry
 poetry install
@@ -148,6 +159,7 @@ poetry shell
 **Cause**: Version conflicts between packages
 
 **Solution**: Update requirements.txt to use flexible versions (already done):
+
 ```bash
 # Old (pinned versions - often conflicts)
 matplotlib==3.8.2
@@ -161,6 +173,7 @@ matplotlib>=3.7.0
 ### Issue: MediaPipe installation fails
 
 **macOS with M1/M2 chips:**
+
 ```bash
 # Install via Homebrew first
 brew install opencv
@@ -170,6 +183,7 @@ pip install --no-cache-dir mediapipe opencv-python
 ```
 
 **Linux/Windows:**
+
 ```bash
 pip install --upgrade mediapipe --no-cache-dir
 ```
@@ -220,27 +234,32 @@ EOF
 ## Using Poetry (Recommended for Teams)
 
 ### Setup Poetry once:
+
 ```bash
 pip install poetry
 ```
 
 ### Then, to set up the project:
+
 ```bash
 poetry install
 poetry shell  # Activates the environment
 ```
 
 ### To add a new package:
+
 ```bash
 poetry add package-name
 ```
 
 ### To update all packages:
+
 ```bash
 poetry update
 ```
 
 ### Lock exact versions:
+
 ```bash
 poetry lock  # Creates poetry.lock file
 ```
@@ -251,13 +270,13 @@ Share `pyproject.toml` and `poetry.lock` with your team for identical environmen
 
 ## Project Files
 
-| File | Purpose |
-|------|---------|
-| `requirements.txt` | Flexible pip dependencies (good for quick setup) |
-| `pyproject.toml` | Poetry configuration (reproducible environments) |
-| `poetry.lock` | Locked versions (when using Poetry) |
-| `setup_env_advanced.sh` | Automated setup with troubleshooting |
-| `setup_env.sh` | Simple setup script |
+| File                    | Purpose                                          |
+| ----------------------- | ------------------------------------------------ |
+| `requirements.txt`      | Flexible pip dependencies (good for quick setup) |
+| `pyproject.toml`        | Poetry configuration (reproducible environments) |
+| `poetry.lock`           | Locked versions (when using Poetry)              |
+| `setup_env_advanced.sh` | Automated setup with troubleshooting             |
+| `setup_env.sh`          | Simple setup script                              |
 
 ---
 
@@ -280,18 +299,18 @@ python3 verify_signatures.py assets/signatures/HELLO.json --animate
 
 ## Dependencies Overview
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| numpy | ^1.24.0 | Numerical computing |
-| opencv-python | ^4.8.0 | Video processing |
-| mediapipe | ^0.10.0 | Pose/hand/face detection |
-| scipy | ^1.11.0 | Cosine similarity calculations |
-| matplotlib | ^3.7.0 | Visualization & debugging |
-| pandas | ^2.0.0 | Data manipulation |
-| scikit-learn | ^1.3.0 | ML utilities |
-| Pillow | ^10.0.0 | Image processing |
-| python-socketio | ^5.9.0 | Real-time communication |
-| python-engineio | ^4.7.0 | Socket.io backend |
+| Package         | Version | Purpose                        |
+| --------------- | ------- | ------------------------------ |
+| numpy           | ^1.24.0 | Numerical computing            |
+| opencv-python   | ^4.8.0  | Video processing               |
+| mediapipe       | ^0.10.0 | Pose/hand/face detection       |
+| scipy           | ^1.11.0 | Cosine similarity calculations |
+| matplotlib      | ^3.7.0  | Visualization & debugging      |
+| pandas          | ^2.0.0  | Data manipulation              |
+| scikit-learn    | ^1.3.0  | ML utilities                   |
+| Pillow          | ^10.0.0 | Image processing               |
+| python-socketio | ^5.9.0  | Real-time communication        |
+| python-engineio | ^4.7.0  | Socket.io backend              |
 
 ---
 
@@ -330,6 +349,7 @@ If you encounter issues:
 5. **Review the logs**: Check `install.log` created by setup script
 
 For platform-specific issues:
+
 - **macOS M1/M2**: See MediaPipe section above
 - **Windows**: Use Windows PowerShell, not cmd
 - **Linux**: May need `python3-dev` package

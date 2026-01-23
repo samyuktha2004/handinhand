@@ -1,10 +1,13 @@
 # 🚀 Quick Setup Summary
 
 ## Current Status
-✅ **Core packages installed**:  
+
+✅ **Core packages installed**:
+
 - numpy, scipy, pandas, scikit-learn, matplotlib, opencv-python, Pillow, python-socketio
 
-⚠️ **Pending**:  
+⚠️ **Pending**:
+
 - MediaPipe (requires Python 3.8-3.12, you're on Python 3.13)
 
 ---
@@ -12,15 +15,18 @@
 ## What You Need to Do
 
 ### Step 1: Install Python 3.12
+
 Choose ONE method:
 
 **Option A: Homebrew (Fastest)**
+
 ```bash
 brew install python@3.12
 /opt/homebrew/bin/python3.12 --version  # Verify
 ```
 
 **Option B: pyenv (Best for managing multiple Python versions)**
+
 ```bash
 brew install pyenv
 pyenv install 3.12.0
@@ -34,6 +40,7 @@ https://www.python.org/downloads/release/python-3120/
 ---
 
 ### Step 2: Recreate Virtual Environment with Python 3.12
+
 ```bash
 # Remove old venv
 rm -rf venv
@@ -51,6 +58,7 @@ pip install -r requirements.txt
 ---
 
 ### Step 3: Verify Everything Works
+
 ```bash
 python3 << EOF
 import cv2
@@ -70,6 +78,7 @@ EOF
 MediaPipe is an actively developed library, but its prebuilt binaries haven't been released for Python 3.13 yet. This is temporary - they'll likely release 3.13 support soon.
 
 **Timeline:**
+
 - Python 3.12: ✅ Supported
 - Python 3.13: ⏳ Not yet (but coming soon)
 - Python 3.11 and earlier: ✅ Supported
@@ -90,14 +99,14 @@ python3 verify_signatures.py assets/signatures/HELLO.json --animate
 
 ## Files Reference
 
-| File | Purpose |
-|------|---------|
-| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Detailed setup instructions |
-| [requirements.txt](requirements.txt) | Package dependencies |
-| [pyproject.toml](pyproject.toml) | Poetry configuration |
-| [setup_simple.sh](setup_simple.sh) | Automated setup script |
+| File                                           | Purpose                       |
+| ---------------------------------------------- | ----------------------------- |
+| [SETUP_GUIDE.md](SETUP_GUIDE.md)               | Detailed setup instructions   |
+| [requirements.txt](requirements.txt)           | Package dependencies          |
+| [pyproject.toml](pyproject.toml)               | Poetry configuration          |
+| [setup_simple.sh](setup_simple.sh)             | Automated setup script        |
 | [setup_env_advanced.sh](setup_env_advanced.sh) | Advanced setup with fallbacks |
-| [progress.md](progress.md) | Project progress tracking |
+| [progress.md](progress.md)                     | Project progress tracking     |
 
 ---
 
