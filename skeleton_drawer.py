@@ -49,7 +49,7 @@ class SkeletonDrawer:
         (28, 30), (28, 32),
         (27, 29), (27, 31),
         # Partial pose connections (for 6-landmark signatures)
-        (0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 5),  # Basic skeleton
+        (0, 1), (0, 2), (1, 3), (2, 4), (3, 5),  # Basic skeleton (no wrist-to-wrist line)
     ]
     
     # Hand connections (per hand: 21 landmarks)

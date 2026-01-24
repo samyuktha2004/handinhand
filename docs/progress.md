@@ -26,17 +26,23 @@
 
 ### 🎯 Today (Jan 24, 2026)
 
-- 🔄 **Skeleton Debugger Optimization**
+- 🔄 **Skeleton Debugger - Bug Hunting**
+  - ✅ Diagnosed: Skeleton not rendering (black screen)
+  - **Root cause found:** Signatures use 6-point partial skeleton, not 33-point full MediaPipe
+  - ✅ Fixed: Disabled normalization by default (was causing empty output)
+  - 🔧 Next: Test if skeleton now visible
+
+- **Previous work:**
   - ✅ Switched default to single-screen mode (low CPU)
   - ✅ Added `--dual` flag for side-by-side (opt-in, high CPU)
   - ✅ Fixed viewport scaling (skeletons no longer cut off)
   - ✅ Added frame decimation support
   - ✅ Created test_single_accuracy.py for per-language testing
 
-- **Issues Identified:**
-  - DESYNC: ASL/BSL videos have different frame counts (55 vs 36)
-  - Skeleton cut-off at bottom (viewport issue - FIXED)
-  - Dual-screen CPU overhead (now addressable with --dual flag)
+- **Known Issues:**
+  - DESYNC: ASL/BSL videos different frame counts (55 vs 36) - TODO
+  - Skeleton visibility: Fixed normalization bug - TESTING
+  - Dual-screen CPU overhead: Addressable with --dual flag - OK
 
 - **Recommended Testing Workflow:**
   1. `python3 test_single_accuracy.py asl hello_0` - Verify ASL

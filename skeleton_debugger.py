@@ -77,7 +77,10 @@ class SkeletonDebugger:
         self.is_playing = False
         self.show_normalization = True
         self.show_joints = True
-        self.normalize_display = True
+        # FIX: Signatures use 6-point partial skeleton, not 33-point full skeleton
+        # Normalization assumes 33 points and fails on partial skeletons
+        # DEFAULT: normalize_display OFF for partial skeletons
+        self.normalize_display = False
         
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
@@ -184,7 +187,7 @@ class SkeletonDebugger:
                              sig_name, lang)
         self._draw_normalization_info(frame_blank)
         
-        help_text = "SPACE:play/pause | </>:frame | n:normalize | d:dots | q:quit"
+        help_text = "SPACE:play/pause | </>:frame | n:normalize | d:dots | r:replay | q:quit"
         cv2.putText(frame_blank, help_text, (10, frame_blank.shape[0] - 10),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
         
@@ -253,7 +256,7 @@ class SkeletonDebugger:
         self._draw_normalization_info(combined)
         
         # Control help (smaller text to fit)
-        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | q:quit | ⚠️ HIGH CPU"
+        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit | ⚠️ HIGH CPU"
         cv2.putText(combined, help_text, (10, combined.shape[0] - 5),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
         
@@ -311,6 +314,7 @@ class SkeletonDebugger:
         print(f"  LEFT/RIGHT: Frame back/forward")
         print(f"  'n': Toggle normalization")
         print(f"  'd': Toggle joint dots")
+        print(f"  'r': Replay from start")
         print(f"  's': Toggle side-by-side mode")
         print(f"  'q': Quit")
         print(f"{'='*60}\n")
@@ -339,10 +343,20 @@ class SkeletonDebugger:
                 self.show_joints = not self.show_joints
             elif key == ord('s'):  # Toggle side-by-side
                 self.side_by_side = not self.side_by_side
+            elif key == ord('r'):  # Replay from start
+                self.current_frame = 0
+                self.is_playing = True
+                print("▶ Replay from start")
             
             # Auto-advance if playing
             if self.is_playing:
-                self.current_frame = (self.current_frame + 1) % self.max_frame
+                next_frame = self.current_frame + 1
+                if next_frame >= self.max_frame:
+                    # Reached end - pause instead of looping
+                    self.is_playing = False
+                    print(f"⏹ Playback complete (frame {self.current_frame})")
+                else:
+                    self.current_frame = next_frame
         
         cv2.destroyAllWindows()
         print("\nDebugger closed.")
