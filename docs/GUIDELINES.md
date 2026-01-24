@@ -6,35 +6,45 @@
 
 ## When to Create Docs
 
-❌ **DON'T create docs for:**
+❌ **NEVER create docs for:**
 
 - Completed tasks (update progress.md instead)
 - Implementation details (add comments in code)
 - Step-by-step walkthroughs (use code comments)
 - Temporary status updates (update progress.md)
-- Analysis of completed work (not needed)
+- One-off analysis or decisions (update progress.md)
+- Code examples (only in SETUP.md if installation-critical)
+- Per-feature status (all in progress.md)
 
-✅ **CREATE docs ONLY for:**
-Create only if docs don't already exist. If they exist, then update existing docs.
-1. **User-facing features** - How to use the system
-2. **Architecture decisions** - Why the system works this way
-3. **API specifications** - How external systems integrate
-4. **Setup/Installation** - Getting the system running
-5. **Roadmap/Strategy** - Long-term direction
+✅ **UPDATE existing docs FIRST before creating new ones:**
+
+Before creating a new doc, check:
+
+1. Can this go in **progress.md**? (Status/decisions)
+2. Can this go in **QUICK_START.md**? (How to run)
+3. Can this go in **SETUP.md**? (Installation)
+4. Can this go in **RECOGNITION_ENGINE_DESIGN.md**? (How it works)
+
+**If yes to any of above:** Update that file. Don't create new doc.
+
+✅ **CREATE NEW docs ONLY for:**
+
+1. **Major architecture** - New subsystem (>100 lines)
+2. **Setup/Installation** - Getting system running (only in SETUP.md)
+3. **Roadmap/Strategy** - Long-term direction
 
 ---
 
 ## Active Documentation (Source of Truth)
 
-These 7 files are THE documentation. Nothing else matters:
+These 6 files are THE documentation. Everything else is archived/supplementary:
 
-1. **PRD.md** - What we're building & why
-2. **progress.md** - Current status (updated with every few iterations)
-3. **TECHSTACK.md** - Feature → Tech Used → Why (1-2 lines concise) (updated with every few iterations)
-4. **QUICK_START.md** - How to run it
-5. **SETUP.md** - How to install it
-6. **RECOGNITION_ENGINE_DESIGN.md** - How it works
-7. **INDEX.md** - Navigation (links to above + archived docs)
+1. **progress.md** ⭐ - Status & decisions (update daily/weekly)
+2. **PRD.md** - What we're building & why
+3. **QUICK_START.md** - How to run it
+4. **SETUP.md** - Installation (code examples OK here only)
+5. **RECOGNITION_ENGINE_DESIGN.md** - How it works (reference)
+6. **INDEX.md** - Navigation hub (links to these + archived)
 
 ---
 
@@ -112,6 +122,37 @@ def temporal_filter(concept, score):
 ```
 
 Not a 5-page doc describing this.
+
+---
+
+## Code in Documentation
+
+**RULE: Minimize code in docs. Code rots.**
+
+### ❌ DON'T add code examples to docs UNLESS:
+
+- It's in SETUP.md (installation-critical scripts)
+- It's in QUICK_START.md (copy-paste to get started)
+- It's reference implementation (mark clearly as reference)
+
+### Why?
+
+- Code changes → docs become wrong
+- Developers update code but forget docs
+- Then docs mislead future developers
+
+### Solution
+
+Use code comments instead:
+
+```python
+# ✅ GOOD: Comment in code
+extractor = SignatureExtractor(delete_after=True)  # Auto-cleanup after extraction
+
+# ❌ BAD: Doc with code example that gets stale
+# "To extract: extractor = SignatureExtractor(delete_after=True)"
+# (6 months later, someone changes the API and docs break)
+```
 
 ---
 
