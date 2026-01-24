@@ -77,6 +77,8 @@ class SkeletonDebugger:
         self.is_playing = False
         self.show_normalization = True
         self.show_joints = True
+        self.completed_lang1 = False  # Track if lang1 video finished
+        self.completed_lang2 = False  # Track if lang2 video finished
         # FIX: Signatures use 6-point partial skeleton, not 33-point full skeleton
         # Normalization assumes 33 points and fails on partial skeletons
         # DEFAULT: normalize_display OFF for partial skeletons
@@ -135,6 +137,65 @@ class SkeletonDebugger:
         # Signature name
         cv2.putText(frame, f"Sig: {sig_name}", (10, 60), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
+    
+    def _normalize_landmarks_to_bbox(self, landmarks: Dict, target_width: float = 0.8) -> Dict:
+        """
+        Normalize landmarks to fit in a standard bounding box.
+        Ensures all skeletons are the same relative size regardless of original coordinate ranges.
+        
+        Args:
+            landmarks: Dict with 'pose', 'left_hand', 'right_hand' arrays
+            target_width: Target width as fraction of frame (0-1)
+        
+        Returns:
+            Normalized landmarks dict
+        """
+        # Collect all points
+        all_points = []
+        if landmarks.get('pose') is not None:
+            all_points.extend(landmarks['pose'][:, :2])
+        if landmarks.get('left_hand') is not None:
+            all_points.extend(landmarks['left_hand'][:, :2])
+        if landmarks.get('right_hand') is not None:
+            all_points.extend(landmarks['right_hand'][:, :2])
+        
+        if not all_points:
+            return landmarks  # No points to normalize
+        
+        all_points = np.array(all_points)
+        
+        # Compute bounding box
+        min_x, min_y = all_points.min(axis=0)
+        max_x, max_y = all_points.max(axis=0)
+        
+        width = max_x - min_x
+        height = max_y - min_y
+        
+        if width == 0 or height == 0:
+            return landmarks  # Degenerate case
+        
+        # Compute scale factor
+        scale = (self.width * target_width) / width
+        
+        # Normalize each component
+        result = {}
+        for key in landmarks:
+            if landmarks[key] is not None:
+                normalized = landmarks[key].copy()
+                # Translate to origin
+                normalized[:, 0] -= min_x
+                normalized[:, 1] -= min_y
+                # Scale
+                normalized[:, :2] *= scale
+                # Center vertically
+                new_height = height * scale
+                y_offset = (self.height - new_height) / 2
+                normalized[:, 1] += y_offset
+                result[key] = normalized
+            else:
+                result[key] = None
+        
+        return result
     
     def _draw_sync_info(self, frame: np.ndarray) -> None:
         """Draw synchronization info on frame."""
@@ -198,55 +259,53 @@ class SkeletonDebugger:
         
         Note: High CPU cost. Recommended to use single-screen mode first.
         """
-        # Scale down individual frames to fit horizontally
-        scale = 0.45  # Each frame is 45% of full width
-        scaled_h = int(self.height * scale)
-        scaled_w = int(self.width * scale)
-        
-        frame1_blank = np.zeros((scaled_h, scaled_w, 3), dtype=np.uint8)
-        frame2_blank = np.zeros((scaled_h, scaled_w, 3), dtype=np.uint8)
+        # Create full-size canvases for each skeleton
+        frame1_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        frame2_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         
         # Get landmarks for current frame
         lm1 = self._get_current_landmarks(self.current_frame, self.frames1)
         lm2 = self._get_current_landmarks(self.current_frame, self.frames2)
         
-        # Scale landmarks for smaller frames
+        # Normalize both to standard bounding box (makes them same relative size)
         if lm1:
-            lm1_scaled = {}
-            for key, val in lm1.items():
-                if val is not None:
-                    val_scaled = val.copy()
-                    val_scaled[:, 0] *= scale
-                    val_scaled[:, 1] *= scale
-                    lm1_scaled[key] = val_scaled
+            lm1_normalized = self._normalize_landmarks_to_bbox(lm1, target_width=0.7)
             frame1_blank = SkeletonDrawer.draw_skeleton(
-                frame1_blank, lm1_scaled, lang=self.lang1,
+                frame1_blank, lm1_normalized, lang=self.lang1,
                 show_joints=self.show_joints
             )
         
         if lm2:
-            lm2_scaled = {}
-            for key, val in lm2.items():
-                if val is not None:
-                    val_scaled = val.copy()
-                    val_scaled[:, 0] *= scale
-                    val_scaled[:, 1] *= scale
-                    lm2_scaled[key] = val_scaled
+            lm2_normalized = self._normalize_landmarks_to_bbox(lm2, target_width=0.7)
             frame2_blank = SkeletonDrawer.draw_skeleton(
-                frame2_blank, lm2_scaled, lang=self.lang2,
+                frame2_blank, lm2_normalized, lang=self.lang2,
                 show_joints=self.show_joints
             )
         
-        # Add info (scaled)
-        cv2.putText(frame1_blank, f"{self.lang1} | Frame {self.current_frame}/{len(self.frames1)}", 
+        # Add info (normalized size)
+        # Frame info with completion indicator for lang1
+        lang1_indicator = "⏹" if self.completed_lang1 else "▶"
+        cv2.putText(frame1_blank, f"{lang1_indicator} {self.lang1} | Frame {self.current_frame + 1}/{len(self.frames1)}", 
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         cv2.putText(frame1_blank, f"Sig: {self.sig1_path.stem}", 
                    (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
         
-        cv2.putText(frame2_blank, f"{self.lang2} | Frame {self.current_frame}/{len(self.frames2)}", 
+        # Show "ended" if video is out of bounds
+        if self.current_frame >= len(self.frames1):
+            cv2.putText(frame1_blank, "[Video ended]", (10, 150), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
+        
+        # Frame info with completion indicator for lang2
+        lang2_indicator = "⏹" if self.completed_lang2 else "▶"
+        cv2.putText(frame2_blank, f"{lang2_indicator} {self.lang2} | Frame {self.current_frame + 1}/{len(self.frames2)}", 
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         cv2.putText(frame2_blank, f"Sig: {self.sig2_path.stem}", 
                    (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+        
+        # Show "ended" if video is out of bounds
+        if self.current_frame >= len(self.frames2):
+            cv2.putText(frame2_blank, "[Video ended]", (10, 150), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
         
         # Combine side-by-side
         combined = np.hstack([frame1_blank, frame2_blank])
@@ -346,17 +405,25 @@ class SkeletonDebugger:
             elif key == ord('r'):  # Replay from start
                 self.current_frame = 0
                 self.is_playing = True
+                self.completed_lang1 = False
+                self.completed_lang2 = False
                 print("▶ Replay from start")
             
             # Auto-advance if playing
             if self.is_playing:
-                next_frame = self.current_frame + 1
-                if next_frame >= self.max_frame:
-                    # Reached end - pause instead of looping
-                    self.is_playing = False
-                    print(f"⏹ Playback complete (frame {self.current_frame})")
+                # Check if either video has completed (for display indicators)
+                if self.current_frame >= len(self.frames1):
+                    self.completed_lang1 = True
+                if self.current_frame >= len(self.frames2):
+                    self.completed_lang2 = True
+                
+                # Advance to next frame if we haven't reached max yet
+                if self.current_frame + 1 <= self.max_frame - 1:
+                    self.current_frame += 1
                 else:
-                    self.current_frame = next_frame
+                    # Both videos have finished
+                    self.is_playing = False
+                    print(f"⏹ Playback complete")
         
         cv2.destroyAllWindows()
         print("\nDebugger closed.")

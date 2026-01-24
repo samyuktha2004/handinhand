@@ -2,12 +2,18 @@
 """
 Extract Golden Signatures from videos using MediaPipe Holistic.
 Saves landmark data as JSON files for later recognition tasks.
+
+Usage:
+    python3 extract_signatures.py                    # Default: BSL lexicon + benchmarks
+    python3 extract_signatures.py --video video.mp4 --sign hello --lang asl
+    python3 extract_signatures.py --dir assets/raw_videos/custom --lang asl --delete
 """
 
 import cv2
 import mediapipe as mp
 import json
 import os
+import argparse
 from pathlib import Path
 from typing import Dict, List, Optional
 import numpy as np
@@ -434,39 +440,96 @@ class SignatureExtractor:
 
 
 def main():
-    """Main extraction workflow."""
+    """Main extraction workflow with CLI support."""
+    parser = argparse.ArgumentParser(
+        description="Extract sign language signatures from videos",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Default: Process BSL lexicon directory
+  python3 extract_signatures.py
+  
+  # Extract single reference video
+  python3 extract_signatures.py --video where_ref.mp4 --sign where --lang asl
+  
+  # Process directory of videos
+  python3 extract_signatures.py --dir assets/raw_videos/custom --lang asl --delete
+  
+  # Extract with frame range (for WLASL context cleanup)
+  python3 extract_signatures.py --video video.mp4 --sign hello --lang asl --start 10 --end 50
+        """
+    )
+    
+    parser.add_argument("--video", help="Path to single video file")
+    parser.add_argument("--sign", default="unknown", help="Sign name for JSON output")
+    parser.add_argument("--lang", default="BSL", choices=["ASL", "BSL", "JSL", "CSL", "LSF"], 
+                        help="Language code (default: BSL)")
+    parser.add_argument("--dir", help="Directory containing multiple videos to process")
+    parser.add_argument("--start", type=int, default=-1, help="Start frame (for frame range extraction)")
+    parser.add_argument("--end", type=int, default=-1, help="End frame (for frame range extraction)")
+    parser.add_argument("--output-dir", default="assets/signatures", help="Output directory for JSON files")
+    parser.add_argument("--delete", action="store_true", help="Delete source videos after processing")
+    parser.add_argument("--default-behavior", action="store_true", help="Run default BSL lexicon + benchmark processing")
+    
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("🎬 Golden Signature Extractor")
     print("=" * 60)
 
-    # Set delete_after=True to remove .mp4 files after processing
-    extractor = SignatureExtractor(output_dir="assets/signatures", delete_after=True)
+    extractor = SignatureExtractor(output_dir=args.output_dir, delete_after=args.delete)
 
-    # Process individual words from lexicon
-    lexicon_dir = "assets/raw_videos/lexicon"
-    if os.path.exists(lexicon_dir):
-        print("\n" + "=" * 60)
-        print("Processing LEXICON videos (individual words)...")
-        print("=" * 60)
-        lexicon_count = extractor.process_directory(lexicon_dir, language="BSL")
-        print(f"\n✅ Successfully processed {lexicon_count} lexicon videos")
-    else:
-        print(f"⚠️  Lexicon directory not found: {lexicon_dir}")
-
-    # Process benchmark sentence
-    benchmark_video = "assets/raw_videos/benchmarks/bsl_hello_where_are_you_going.mp4"
-    if os.path.exists(benchmark_video):
-        print("\n" + "=" * 60)
-        print("Processing BENCHMARK sentence...")
-        print("=" * 60)
-        signature = extractor.extract_from_video(
-            benchmark_video, "bsl_hello_where_are_you_going", language="BSL"
-        )
+    # Mode 1: Single video extraction
+    if args.video:
+        print(f"\n📹 Extracting single video...")
+        if args.start > 0 or args.end > 0:
+            signature = extractor.extract_from_video_range(
+                args.video, args.sign, args.start, args.end, language=args.lang
+            )
+        else:
+            signature = extractor.extract_from_video(
+                args.video, args.sign, language=args.lang
+            )
+        
         if signature:
-            extractor.save_signature(signature, source_video=benchmark_video)
-            print("✅ Successfully processed benchmark video")
+            extractor.save_signature(signature, source_video=args.video if args.delete else None)
+            print(f"✅ Successfully extracted: {args.sign}")
+        else:
+            print(f"❌ Failed to extract: {args.video}")
+
+    # Mode 2: Directory processing
+    elif args.dir:
+        print(f"\n📂 Processing directory: {args.dir}")
+        count = extractor.process_directory(args.dir, language=args.lang)
+        print(f"✅ Successfully processed {count} videos")
+
+    # Mode 3: Default behavior (BSL lexicon + benchmarks)
     else:
-        print(f"⚠️  Benchmark video not found: {benchmark_video}")
+        # Process individual words from lexicon
+        lexicon_dir = "assets/raw_videos/lexicon"
+        if os.path.exists(lexicon_dir):
+            print("\n" + "=" * 60)
+            print("Processing LEXICON videos (individual words)...")
+            print("=" * 60)
+            lexicon_count = extractor.process_directory(lexicon_dir, language="BSL")
+            print(f"\n✅ Successfully processed {lexicon_count} lexicon videos")
+        else:
+            print(f"⚠️  Lexicon directory not found: {lexicon_dir}")
+
+        # Process benchmark sentence
+        benchmark_video = "assets/raw_videos/benchmarks/bsl_hello_where_are_you_going.mp4"
+        if os.path.exists(benchmark_video):
+            print("\n" + "=" * 60)
+            print("Processing BENCHMARK sentence...")
+            print("=" * 60)
+            signature = extractor.extract_from_video(
+                benchmark_video, "bsl_hello_where_are_you_going", language="BSL"
+            )
+            if signature:
+                extractor.save_signature(signature, source_video=benchmark_video)
+                print("✅ Successfully processed benchmark video")
+        else:
+            print(f"⚠️  Benchmark video not found: {benchmark_video}")
 
     # Save translation map
     extractor.save_translation_map("translation_map.json")
@@ -475,7 +538,7 @@ def main():
 
     print("\n" + "=" * 60)
     print("✅ Extraction Complete!")
-    print(f"📁 Signatures saved to: assets/signatures/")
+    print(f"📁 Signatures saved to: {args.output_dir}")
     print("=" * 60)
 
 

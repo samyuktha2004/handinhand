@@ -4,7 +4,7 @@
 
 This is a **4-tier verified, production-ready** sign language recognition system that:
 
-1. Extracts ASL/BSL signatures from WLASL videos
+1. Extracts ASL/BSL signatures, to be expanded to more languages
 2. Generates 512-dimensional embeddings with body-centric normalization
 3. Recognizes signs in real-time via cosine similarity
 4. Validates results with automated cross-concept checking (Tier 4)
@@ -18,7 +18,7 @@ This is a **4-tier verified, production-ready** sign language recognition system
 ### Setup (one-time)
 
 ```bash
-cd /Users/supriyarao/visual\ studio/handinhand
+cd <path-to-handinhand>
 source ./activate.sh
 ```
 
@@ -288,7 +288,7 @@ handinhand/
 
 ```bash
 # Make sure you're in the right directory
-cd /Users/supriyarao/visual\ studio/handinhand
+cd <path-to-handinhand>
 ls translation_map.json  # Should exist
 ```
 
