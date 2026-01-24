@@ -24,19 +24,30 @@
 - Breaking changes: 0
 - Production ready: YES
 
-### 🎯 Today (Jan 23, 2026)
+### 🎯 Today (Jan 24, 2026)
 
-- ✅ File organization (docs/scripts folders)
-- ✅ Documentation reduction (40 → 7 active files, -80%)
-- ✅ Added GUIDELINES.md (no unnecessary docs)
-- ✅ Created ARCHIVE.md (historical reference)
+- 🔄 **Skeleton Debugger Optimization**
+  - ✅ Switched default to single-screen mode (low CPU)
+  - ✅ Added `--dual` flag for side-by-side (opt-in, high CPU)
+  - ✅ Fixed viewport scaling (skeletons no longer cut off)
+  - ✅ Added frame decimation support
+  - ✅ Created test_single_accuracy.py for per-language testing
 
----
+- **Issues Identified:**
+  - DESYNC: ASL/BSL videos have different frame counts (55 vs 36)
+  - Skeleton cut-off at bottom (viewport issue - FIXED)
+  - Dual-screen CPU overhead (now addressable with --dual flag)
+
+- **Recommended Testing Workflow:**
+  1. `python3 test_single_accuracy.py asl hello_0` - Verify ASL
+  2. `python3 test_single_accuracy.py bsl hello` - Verify BSL
+  3. `python3 skeleton_debugger.py --dual` - Compare side-by-side (only after 1 & 2)---
 
 ## Next Phase (Week 2-3)
 
 ### Phase 4: Multi-Language Expansion
 
+- [ ] Expand to other words and phrases in ASL and BSL and make it bidirectional
 - [ ] Add JSL (Japanese Sign Language)
 - [ ] Add CSL (Chinese Sign Language)
 - [ ] Add LSF (French Sign Language)
@@ -108,7 +119,7 @@ None.
 
 ---
 
-## ARCHIVED: Phase 1 Details
+## Phase 1 Details
 
 ### 1.1 Environment Setup
 

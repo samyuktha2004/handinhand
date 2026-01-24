@@ -15,7 +15,7 @@
 - Analysis of completed work (not needed)
 
 ✅ **CREATE docs ONLY for:**
-
+Create only if docs don't already exist. If they exist, then update existing docs.
 1. **User-facing features** - How to use the system
 2. **Architecture decisions** - Why the system works this way
 3. **API specifications** - How external systems integrate
@@ -26,14 +26,15 @@
 
 ## Active Documentation (Source of Truth)
 
-These 6 files are THE documentation. Nothing else matters:
+These 7 files are THE documentation. Nothing else matters:
 
 1. **PRD.md** - What we're building & why
-2. **progress.md** - Current status (updated daily)
-3. **QUICK_START.md** - How to run it
-4. **SETUP.md** - How to install it
-5. **RECOGNITION_ENGINE_DESIGN.md** - How it works
-6. **INDEX.md** - Navigation (links to above + archived docs)
+2. **progress.md** - Current status (updated with every few iterations)
+3. **TECHSTACK.md** - Feature → Tech Used → Why (1-2 lines concise) (updated with every few iterations)
+4. **QUICK_START.md** - How to run it
+5. **SETUP.md** - How to install it
+6. **RECOGNITION_ENGINE_DESIGN.md** - How it works
+7. **INDEX.md** - Navigation (links to above + archived docs)
 
 ---
 
@@ -153,3 +154,75 @@ This is sustainable and scales.
 4. **When done:** Always put in `/docs/` folder
 
 **The default answer is NO.** Assume we don't need it.
+
+---
+
+## File Organization Rules
+
+**IMPORTANT:** Moving files breaks imports. Think carefully before organizing.
+
+### Current Structure (Leave As-Is)
+
+```
+/root
+├── recognition_engine.py              ← Core engine (keep in root)
+├── recognition_engine_ui.py           ← Core UI (keep in root)
+├── translation_map.json               ← Core data (keep in root)
+├── concept_map.json                   ← Core data (keep in root)
+├── requirements.txt                   ← Setup (keep in root)
+├── pyproject.toml                     ← Setup (keep in root)
+├── activate.sh                        ← Setup (keep in root)
+│
+├── /docs/                             ← ALL documentation
+├── /assets/                           ← Data files (embeddings, videos)
+├── /scripts/                          ← Tests & validation
+└── /utils/                            ← Helper modules
+```
+
+### When to Create New Folders
+
+**RULE: Minimum 3 related files per folder. No single-file folders.**
+
+✓ **DO create folders when:**
+
+- You have 3+ files that belong together
+- Files serve a single, clear purpose
+- Keeping them in root would clutter
+
+✗ **DON'T create folders when:**
+
+- You only have 1-2 files
+- Files are frequently imported from other modules (breaks imports)
+- They're core to the system (keep in root)
+
+### If You Create a New Folder
+
+1. **Update all imports** - Every file that `import` or `from` these files
+2. **Update all documentation links** - Check docs for file references
+3. **Create **init**.py** - If it's a Python package
+4. **Update README** - Document the new structure
+5. **Test thoroughly** - Run validation suite
+
+**Cost is high. Only do it if structure is really broken.**
+
+### Examples
+
+✗ DON'T do this (too few files):
+
+```
+/engine/
+  └── recognition_engine.py          ← Only 1 file, breaks imports
+```
+
+✓ DO do this (clearly related, 3+ files):
+
+```
+/processors/
+  ├── generate_embeddings.py
+  ├── extract_signatures.py
+  ├── extract_wlasl_videos.py
+  ├── setup_dataset.py
+  └── __init__.py
+```
+
+**Current state:** Root is fine. Don't reorganize.
