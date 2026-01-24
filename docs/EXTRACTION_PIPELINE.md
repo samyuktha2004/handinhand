@@ -36,7 +36,7 @@ python3 extract_signatures.py
 - Saves to `assets/signatures/bsl/`
 - Auto-deletes .mp4 files
 
-### Single Video Extraction (Reference Videos)
+### Single Video Extraction (Reference Videos) ⭐ BEST PRACTICE
 
 ```bash
 python3 extract_signatures.py --video video.mp4 --sign where --lang asl --delete
@@ -47,7 +47,14 @@ python3 extract_signatures.py --video video.mp4 --sign where --lang asl --delete
 - `--video`: Path to input video file
 - `--sign`: Name for output JSON (e.g., "where", "hello_ref")
 - `--lang`: Language code (ASL, BSL, JSL, CSL, LSF)
-- `--delete`: Remove source video after extraction (recommended)
+- `--delete`: ⭐ **ALWAYS use** - Auto-cleanup source video after extraction
+
+**Why `--delete`?**
+
+- Keeps workspace clean (saves disk space)
+- Follows automatic cleanup pattern (consistent with wlasl_pipeline.py)
+- Prevents orphaned video files
+- Pipeline takes 2 steps: extract → cleanup
 
 ### Directory Processing (Custom Videos)
 
@@ -182,9 +189,15 @@ All signatures stored as JSON with consistent structure:
    ```
 
 5. **Test recognition**
+
    ```bash
-   python3 test_recognition_smoothed.py
+   python3 test_recognition_quality.py
    ```
+
+6. **Analyze decision** (replace vs keep)
+   - Check similarity metrics in output
+   - Compare before/after if replacing existing data
+   - See: [docs/SIGNATURE_STRATEGY.md](SIGNATURE_STRATEGY.md) for decision framework
 
 ### Multi-Language Expansion (Future)
 
@@ -243,9 +256,33 @@ python3 test_recognition_smoothed.py  # Run recognition tests
 ## Related Files
 
 - **Core:** `extract_signatures.py` - Unified extraction engine
-- **Tests:** `test_recognition_smoothed.py` - Validate extracted signatures
+- **Test tool:** `test_recognition_quality.py` - Analyze all word similarities
+- **Strategy guide:** `docs/SIGNATURE_STRATEGY.md` - Decision framework for replace vs keep
 - **Smoothing:** `smooth_signatures.py` - Apply temporal filtering (optional)
-- **Analysis:** `docs/WHERE_ANALYSIS.md` - Reference extraction case study
+
+---
+
+## Cleanup Philosophy
+
+**Automatic cleanup via --delete flag:**
+
+```bash
+python3 extract_signatures.py --video video.mp4 --sign word --lang ASL --delete
+# Extracts → Saves JSON → Deletes video (all in one command)
+```
+
+**Why automatic cleanup?**
+
+- Prevents orphaned video files
+- Saves disk space (videos are large)
+- Consistent with wlasl_pipeline.py pattern
+- Encourages developers to always cleanup
+
+**When to use --delete:**
+
+- ✅ Always for reference videos (extract once, don't need source)
+- ✅ Always for testing/analysis videos
+- ❌ Only skip if you need to re-extract with different settings
 
 ---
 
@@ -263,6 +300,12 @@ python3 test_recognition_smoothed.py  # Run recognition tests
 - Consistent output format
 - Maintenance burden reduced
 - Extensible to new languages
+
+**Test systematically, not ad-hoc**
+
+- Use `test_recognition_quality.py` for all analysis
+- No one-off test files per word
+- Decisions documented in SIGNATURE_STRATEGY.md
 
 ---
 

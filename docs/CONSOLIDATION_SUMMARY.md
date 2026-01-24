@@ -9,14 +9,17 @@
 ## What Changed
 
 ### Before ❌
+
 ```
 extract_signatures.py   # Generic signature extractor (hardcoded to BSL lexicon)
 extract_where_reference.py  # Custom WHERE reference extraction (one-off script)
 wlasl_pipeline.py       # WLASL-specific pipeline
 ```
+
 **Problem:** Bespoke scripts for each extraction type, inconsistent patterns
 
 ### After ✅
+
 ```
 extract_signatures.py   # Unified pipeline with CLI support
 ├── Single video extraction
@@ -25,6 +28,7 @@ extract_signatures.py   # Unified pipeline with CLI support
 ├── Frame range extraction
 └── Auto-cleanup
 ```
+
 **Benefit:** One tool, many modes, consistent output
 
 ---
@@ -32,6 +36,7 @@ extract_signatures.py   # Unified pipeline with CLI support
 ## Key Improvements
 
 ### 1. CLI Support Added to `extract_signatures.py`
+
 ```bash
 # Reference videos (new)
 python3 extract_signatures.py --video ref.mp4 --sign where --lang asl --delete
@@ -47,20 +52,25 @@ python3 extract_signatures.py
 ```
 
 ### 2. Removed Redundant Script
+
 - Deleted `extract_where_reference.py` (one-off custom script)
 - WHERE reference extracted with unified pipeline instead
 - Result still saved to `assets/signatures/asl/where_0.json` ✓
 
 ### 3. Language Code Support Added
+
 ```python
 --lang {ASL, BSL, JSL, CSL, LSF}
 ```
+
 Ready for Phase 5 multi-language expansion
 
 ### 4. Auto-Cleanup Integrated
+
 ```bash
 --delete  # Automatically remove source video after extraction
 ```
+
 Follows same pattern as wlasl_pipeline.py
 
 ---
@@ -68,6 +78,7 @@ Follows same pattern as wlasl_pipeline.py
 ## Validation
 
 ### WHERE Signature Verified ✓
+
 ```bash
 $ head -5 assets/signatures/asl/where_0.json
 {
@@ -78,12 +89,14 @@ $ head -5 assets/signatures/asl/where_0.json
 ```
 
 ### Recognition Tests Pass ✓
+
 ```
 Average similarity: 0.7339 (< 0.80 threshold)
 WHERE: 0.5931 ✅ (improved from 0.9819)
 ```
 
 ### CLI Help Works ✓
+
 ```bash
 $ python3 extract_signatures.py --help
 usage: extract_signatures.py [-h] [--video VIDEO] [--sign SIGN]
@@ -120,14 +133,14 @@ Consistent, repeatable, no new scripts needed.
 
 ## Benefits
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| **Scripts** | 3 (extract_signatures, extract_where_reference, wlasl_pipeline) | 2 (extract_signatures, wlasl_pipeline) |
-| **Consistency** | Different patterns for WLASL vs reference | Unified CLI for all sources |
-| **Reference video handling** | Custom script needed | --video flag in unified tool |
-| **Frame range extraction** | Only in wlasl_pipeline | Available for all video sources |
-| **Phase 5 readiness** | Low (new scripts each language) | High (proven reusable pattern) |
-| **Auto-cleanup** | Only in wlasl_pipeline | Available everywhere via --delete |
+| Aspect                       | Before                                                          | After                                  |
+| ---------------------------- | --------------------------------------------------------------- | -------------------------------------- |
+| **Scripts**                  | 3 (extract_signatures, extract_where_reference, wlasl_pipeline) | 2 (extract_signatures, wlasl_pipeline) |
+| **Consistency**              | Different patterns for WLASL vs reference                       | Unified CLI for all sources            |
+| **Reference video handling** | Custom script needed                                            | --video flag in unified tool           |
+| **Frame range extraction**   | Only in wlasl_pipeline                                          | Available for all video sources        |
+| **Phase 5 readiness**        | Low (new scripts each language)                                 | High (proven reusable pattern)         |
+| **Auto-cleanup**             | Only in wlasl_pipeline                                          | Available everywhere via --delete      |
 
 ---
 
