@@ -10,6 +10,11 @@ Purpose:
 - Visual synchronization check (ASL vs BSL frame alignment)
 - Confirm NMS preservation (hand shapes, body orientation)
 
+Reference Body Integration:
+- All skeletons are scaled to REFERENCE_SHOULDER_WIDTH (100px)
+- This ensures consistent body size across all signs
+- Hands stay within frame bounds regardless of original video capture
+
 Usage:
     from skeleton_drawer import draw_skeleton
     img_with_skeleton = draw_skeleton(frame, landmarks_dict, lang="ASL")
@@ -18,6 +23,12 @@ Usage:
 import cv2
 import numpy as np
 from typing import Dict, Tuple, Any, List
+
+# Reference body constants (canonical coordinate system)
+# All signatures are normalized to these proportions
+REFERENCE_SHOULDER_WIDTH = 100  # Target shoulder span in pixels
+REFERENCE_FRAME_WIDTH = 640
+REFERENCE_FRAME_HEIGHT = 480
 
 
 class SkeletonDrawer:
@@ -226,8 +237,88 @@ class SkeletonDrawer:
         
         return result
 
+    @staticmethod
+    def normalize_to_reference_body(
+        landmarks: Dict[str, np.ndarray],
+        frame_width: int = 640,
+        frame_height: int = 480,
+        target_shoulder_width: int = REFERENCE_SHOULDER_WIDTH
+    ) -> Dict[str, np.ndarray]:
+        """
+        Normalize landmarks to reference body proportions.
+        
+        This ensures ALL skeletons have:
+        - Consistent body size (shoulder width = target_shoulder_width)
+        - Centered position in frame
+        - Hands stay within frame bounds
+        
+        Args:
+            landmarks: Dict with 'pose', 'left_hand', 'right_hand', 'face' (pixel coords)
+            frame_width: Target frame width
+            frame_height: Target frame height
+            target_shoulder_width: Target shoulder width in pixels (default 100)
+        
+        Returns:
+            Normalized landmarks dict (all components scaled uniformly)
+        """
+        result = {}
+        
+        # Get pose landmarks (required for normalization)
+        pose = landmarks.get('pose')
+        if pose is None or len(pose) < 2:
+            # Can't normalize without shoulders, return as-is
+            return landmarks
+        
+        pose = pose.copy()
+        
+        # Calculate current shoulder width (indices 0, 1 for reduced pose)
+        left_shoulder = pose[0][:2]
+        right_shoulder = pose[1][:2]
+        current_shoulder_width = np.linalg.norm(right_shoulder - left_shoulder)
+        
+        if current_shoulder_width < 1:
+            # Degenerate case, return as-is
+            return landmarks
+        
+        # Calculate scale factor
+        scale = target_shoulder_width / current_shoulder_width
+        
+        # Calculate shoulder center (this becomes frame center)
+        shoulder_center = (left_shoulder + right_shoulder) / 2
+        
+        # Target center (middle of frame, slightly above center for signing space)
+        target_center = np.array([frame_width / 2, frame_height * 0.4])
+        
+        # Transform each component: translate to origin, scale, translate to target
+        for key in ['pose', 'left_hand', 'right_hand', 'face']:
+            if landmarks.get(key) is not None and len(landmarks[key]) > 0:
+                points = landmarks[key].copy()
+                
+                # Translate: shoulder center to origin
+                points[:, 0] -= shoulder_center[0]
+                points[:, 1] -= shoulder_center[1]
+                
+                # Scale uniformly
+                points[:, 0] *= scale
+                points[:, 1] *= scale
+                
+                # Translate: origin to target center
+                points[:, 0] += target_center[0]
+                points[:, 1] += target_center[1]
+                
+                result[key] = points
+            else:
+                result[key] = landmarks.get(key)
+        
+        return result
 
-def extract_landmarks_from_signature(sig_dict: Dict[str, Any], frame_width: int = 640, frame_height: int = 480) -> List:
+
+def extract_landmarks_from_signature(
+    sig_dict: Dict[str, Any], 
+    frame_width: int = 640, 
+    frame_height: int = 480,
+    normalize_to_reference: bool = True
+) -> List:
     """
     Extract MediaPipe landmarks from signature JSON.
     
@@ -250,6 +341,8 @@ def extract_landmarks_from_signature(sig_dict: Dict[str, Any], frame_width: int 
         sig_dict: Signature JSON loaded as dict
         frame_width: Width to scale normalized coordinates to (default 640)
         frame_height: Height to scale normalized coordinates to (default 480)
+        normalize_to_reference: If True, scale to reference body proportions
+                               (SHOULDER_WIDTH=100px, centered in frame)
     
     Returns:
         List of landmark dicts, one per frame
@@ -278,6 +371,15 @@ def extract_landmarks_from_signature(sig_dict: Dict[str, Any], frame_width: int 
             if 'right_hand' in frame and frame['right_hand']:
                 rh_arr = np.array(frame['right_hand'], dtype=np.float32)
                 landmarks['right_hand'] = _scale_landmarks(rh_arr, frame_width, frame_height)
+            if 'face' in frame and frame['face']:
+                face_arr = np.array(frame['face'], dtype=np.float32)
+                landmarks['face'] = _scale_landmarks(face_arr, frame_width, frame_height)
+            
+            # Apply reference body normalization if requested
+            if normalize_to_reference:
+                landmarks = SkeletonDrawer.normalize_to_reference_body(
+                    landmarks, frame_width, frame_height
+                )
             
             frames_data.append(landmarks)
     
@@ -295,6 +397,15 @@ def extract_landmarks_from_signature(sig_dict: Dict[str, Any], frame_width: int 
             if 'right_hand' in frame and frame['right_hand']:
                 rh_arr = np.array(frame['right_hand'], dtype=np.float32)
                 landmarks['right_hand'] = _scale_landmarks(rh_arr, frame_width, frame_height)
+            if 'face' in frame and frame['face']:
+                face_arr = np.array(frame['face'], dtype=np.float32)
+                landmarks['face'] = _scale_landmarks(face_arr, frame_width, frame_height)
+            
+            # Apply reference body normalization if requested
+            if normalize_to_reference:
+                landmarks = SkeletonDrawer.normalize_to_reference_body(
+                    landmarks, frame_width, frame_height
+                )
             
             frames_data.append(landmarks)
     
