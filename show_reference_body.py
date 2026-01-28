@@ -4,28 +4,36 @@ Reference Body Visualization Tool
 =================================
 
 PURPOSE:
-    Developer debugging tool for visualizing skeleton positions.
-    NOT used for recognition or avatar rendering.
+    Developer debugging tool for understanding signing space geometry.
+    Shows WHERE hands can reach, not HOW signs look.
 
 USE CASES:
     1. Verify hand/arm positions are within frame bounds
-    2. Debug MediaPipe landmark extraction issues
-    3. Understand signing space geometry
-    4. Test skeleton drawing code
+    2. Understand signing space limits (up/down/left/right/chest)
+    3. Debug arm length and body proportions
+    4. Visual reference for skeleton positioning
 
 NOT USED FOR:
     - Recognition engine (uses MediaPipe normalized coords directly)
-    - Avatar rendering (uses VRM 3D skeleton in Three.js)
-    - Embedding computation (works in normalized coordinate space)
+    - Avatar rendering (VRM 3D skeleton in Three.js for v2.0)
+    - Translation display (skeleton_drawer.py renders actual signatures)
+    - v1.0 proof of concept (use skeleton_debugger.py instead)
+
+v1.0 PROOF OF CONCEPT ARCHITECTURE:
+    To show translated signs in 2D (before 3D avatar):
+    
+        skeleton_drawer.py   → Draws skeleton from signature JSON
+        skeleton_debugger.py → Animates ASL/BSL signatures side-by-side
+    
+    These use ACTUAL MediaPipe coordinates from JSON, so proportions
+    are automatically correct. This reference body is NOT in that pipeline.
 
 PROPORTION NOTES:
     Hand size is intentionally larger than anatomical (35px vs 17px palm width)
-    for visibility during debugging. This does NOT affect embeddings because:
-    - Embeddings use MediaPipe's normalized 0-1 coordinate space
-    - Avatar uses VRM skeleton proportions (separate from this)
-    - This is purely a 2D visualization aid
+    for visibility during debugging. This does NOT affect the translation
+    proof of concept because skeleton_drawer.py uses real MediaPipe data.
 
-    If exact MediaPipe proportions are needed for future features,
+    If exact MediaPipe proportions are needed for this tool,
     reduce palm_width from 35px to ~17-20px in generate_hand_landmarks().
 
 Shows reference body with hands in 6 positions: neutral, up, down, left, right, chest.
