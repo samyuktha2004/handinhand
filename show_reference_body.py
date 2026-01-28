@@ -1,6 +1,34 @@
 #!/usr/bin/env python3
 """
-Show reference body with hands in 4 positions: up, down, left, right.
+Reference Body Visualization Tool
+=================================
+
+PURPOSE:
+    Developer debugging tool for visualizing skeleton positions.
+    NOT used for recognition or avatar rendering.
+
+USE CASES:
+    1. Verify hand/arm positions are within frame bounds
+    2. Debug MediaPipe landmark extraction issues
+    3. Understand signing space geometry
+    4. Test skeleton drawing code
+
+NOT USED FOR:
+    - Recognition engine (uses MediaPipe normalized coords directly)
+    - Avatar rendering (uses VRM 3D skeleton in Three.js)
+    - Embedding computation (works in normalized coordinate space)
+
+PROPORTION NOTES:
+    Hand size is intentionally larger than anatomical (35px vs 17px palm width)
+    for visibility during debugging. This does NOT affect embeddings because:
+    - Embeddings use MediaPipe's normalized 0-1 coordinate space
+    - Avatar uses VRM skeleton proportions (separate from this)
+    - This is purely a 2D visualization aid
+
+    If exact MediaPipe proportions are needed for future features,
+    reduce palm_width from 35px to ~17-20px in generate_hand_landmarks().
+
+Shows reference body with hands in 6 positions: neutral, up, down, left, right, chest.
 Uses exact MediaPipe landmark structure: 33 pose + 21 per hand.
 """
 import cv2
