@@ -21,15 +21,18 @@
 - [x] Implement 21-point hand structure (MediaPipe compatible)
 - [x] Add palm connections (MCP joints: 5→9→13→17)
 - [x] Fix thumb positions (correct biological sides)
-- [x] Fix arm lengths (consistent ~100px all positions)
+- [x] Fix arm ratios (anatomically accurate: upper 55%, forearm 45%)
 - [x] Add "chest" position for signing near face/body
 - [x] Add neck connection to head
+- [x] Add oval face with simplified features (eyes, eyebrows, mouth)
 - [x] Assess face embedding integration (see TECH_LEAD_ASSESSMENT.md Appendix B)
+- [x] Document reference body purpose and integration points
+- [ ] **CRITICAL: Apply reference body scaling to `skeleton_drawer.py`**
+- [ ] **CRITICAL: Update `skeleton_debugger.py` to use SHOULDER_WIDTH normalization**
 - [ ] Verify all positions visually
-- [ ] Apply scaling to `skeleton_debugger.py`
 - [ ] Test with ASL signatures (hello, go, where, you)
 - [ ] Test with BSL signatures
-- [ ] Confirm blue dot issue is fixed
+- [ ] Confirm hands stay in frame across all signs
 
 ### Phase 3: Embedding Normalization ✅ COMPLETE
 

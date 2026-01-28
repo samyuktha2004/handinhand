@@ -1,40 +1,42 @@
 #!/usr/bin/env python3
 """
-Reference Body Visualization Tool
-=================================
+Reference Body - Canonical Coordinate System
+=============================================
 
 PURPOSE:
-    Developer debugging tool for understanding signing space geometry.
-    Shows WHERE hands can reach, not HOW signs look.
+    Defines the STANDARD SCALE and POSITION for all skeleton visualizations.
+    All signatures should be normalized to these proportions to ensure:
+    1. Consistent body size across all signs
+    2. Hands stay within frame bounds  
+    3. Comparable visual appearance between ASL/BSL pairs
 
-USE CASES:
-    1. Verify hand/arm positions are within frame bounds
-    2. Understand signing space limits (up/down/left/right/chest)
-    3. Debug arm length and body proportions
-    4. Visual reference for skeleton positioning
-
-NOT USED FOR:
-    - Recognition engine (uses MediaPipe normalized coords directly)
-    - Avatar rendering (VRM 3D skeleton in Three.js for v2.0)
-    - Translation display (skeleton_drawer.py renders actual signatures)
-    - v1.0 proof of concept (use skeleton_debugger.py instead)
-
-v1.0 PROOF OF CONCEPT ARCHITECTURE:
-    To show translated signs in 2D (before 3D avatar):
+CRITICAL CONSTANTS (used by skeleton_drawer/debugger):
+    SHOULDER_WIDTH = 100px  → Target shoulder span for normalization
+    ARM_LENGTH = 100px      → Total arm length (shoulder to wrist)
+    UPPER_ARM = 55px        → Shoulder to elbow (anatomically accurate)
+    LOWER_ARM = 45px        → Elbow to wrist
     
-        skeleton_drawer.py   → Draws skeleton from signature JSON
-        skeleton_debugger.py → Animates ASL/BSL signatures side-by-side
+    These define the TARGET coordinate space that signatures are scaled TO.
+
+HOW IT WORKS:
+    1. MediaPipe extracts landmarks in 0-1 normalized space
+    2. skeleton_drawer scales these to pixel coordinates
+    3. Reference body defines WHERE those pixels should land
+    4. If signature's shoulder width = 0.3, and we want 100px:
+       → scale factor = 100 / (0.3 * frame_width) 
+
+INTEGRATION STATUS:
+    ⚠️  skeleton_drawer.py  - Uses bounding box, NOT reference proportions
+    ⚠️  skeleton_debugger.py - Uses bounding box, NOT reference proportions
     
-    These use ACTUAL MediaPipe coordinates from JSON, so proportions
-    are automatically correct. This reference body is NOT in that pipeline.
+    TODO: Update normalization to use SHOULDER_WIDTH constant as reference
+    This will ensure all rendered skeletons have consistent proportions.
 
-PROPORTION NOTES:
-    Hand size is intentionally larger than anatomical (35px vs 17px palm width)
-    for visibility during debugging. This does NOT affect the translation
-    proof of concept because skeleton_drawer.py uses real MediaPipe data.
-
-    If exact MediaPipe proportions are needed for this tool,
-    reduce palm_width from 35px to ~17-20px in generate_hand_landmarks().
+HAND PROPORTION NOTES:
+    Hand size is intentionally larger (35px vs 17px palm width) for visibility.
+    For v1.0 PoC, this is acceptable since skeleton_drawer uses actual
+    MediaPipe data. For consistent avatar rendering, hands should also
+    be scaled to match reference proportions.
 
 Shows reference body with hands in 6 positions: neutral, up, down, left, right, chest.
 Uses exact MediaPipe landmark structure: 33 pose + 21 per hand.
