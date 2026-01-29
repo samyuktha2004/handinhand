@@ -88,31 +88,115 @@ class SkeletonDrawer:
     THICKNESS_JOINT = 4
     JOINT_RADIUS = 3
     
-    # Default hand shape for when hand data is missing/zeros
-    # This is a simple "open hand" pattern relative to wrist (0,0)
-    # Based on typical hand proportions: palm ~35px, fingers ~25px
-    DEFAULT_HAND_OFFSETS = np.array([
-        [0, 0, 0],      # 0: Wrist
-        [8, -5, 0],     # 1: Thumb CMC
-        [15, -12, 0],   # 2: Thumb MCP
-        [20, -18, 0],   # 3: Thumb IP
-        [25, -22, 0],   # 4: Thumb tip
-        [5, -20, 0],    # 5: Index MCP
-        [5, -30, 0],    # 6: Index PIP
-        [5, -38, 0],    # 7: Index DIP
-        [5, -45, 0],    # 8: Index tip
-        [0, -22, 0],    # 9: Middle MCP
-        [0, -33, 0],    # 10: Middle PIP
-        [0, -42, 0],    # 11: Middle DIP
-        [0, -50, 0],    # 12: Middle tip
-        [-5, -20, 0],   # 13: Ring MCP
-        [-5, -30, 0],   # 14: Ring PIP
-        [-5, -38, 0],   # 15: Ring DIP
-        [-5, -45, 0],   # 16: Ring tip
-        [-10, -18, 0],  # 17: Pinky MCP
-        [-10, -26, 0],  # 18: Pinky PIP
-        [-10, -32, 0],  # 19: Pinky DIP
-        [-10, -38, 0],  # 20: Pinky tip
+    # Reference hand landmarks relative to wrist (0,0)
+    # Generated from show_reference_body.py generate_hand_landmarks()
+    # This is a neutral "open hand" pointing downward (+Y direction)
+    # Will be rotated to match arm orientation
+    # 
+    # Key insight: When data is missing, we attach this to the wrist
+    # and orient along the forearm direction. When data returns,
+    # the transition is seamless because proportions match.
+    @staticmethod
+    def _generate_reference_hand(wrist_pos, arm_direction, is_left):
+        """
+        Generate reference hand landmarks attached to wrist.
+        
+        Uses the same proportions as show_reference_body.py for consistency.
+        The hand is oriented along the arm direction (elbow → wrist).
+        
+        Args:
+            wrist_pos: (x, y) wrist position in pixels
+            arm_direction: (dx, dy) unit vector from elbow to wrist
+            is_left: True for left hand
+        
+        Returns:
+            np.array of shape (21, 3) - hand landmarks
+        """
+        import math
+        
+        wx, wy = wrist_pos
+        
+        # Segment lengths (matching reference body)
+        seg = 10  # finger segment length
+        palm_depth = 25  # wrist to MCP distance
+        palm_width = 35  # width of palm at MCP level
+        
+        # Calculate rotation from arm direction
+        dx, dy = arm_direction
+        arm_angle = math.atan2(dy, dx)  # Angle from +X axis
+        
+        def rotate_point(x, y, angle, cx, cy):
+            """Rotate point (x,y) around (cx,cy) by angle."""
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
+            x -= cx
+            y -= cy
+            rx = x * cos_a - y * sin_a + cx
+            ry = x * sin_a + y * cos_a + cy
+            return rx, ry
+        
+        landmarks = []
+        
+        # Mirror for left vs right hand
+        mirror = -1 if is_left else 1
+        
+        # Build hand in "pointing right" orientation, then rotate
+        # Local coordinates: +X = toward fingertips, +Y = toward pinky
+        
+        # 0: Wrist (at origin in local coords)
+        local_points = [(0, 0)]
+        
+        # Thumb (angled outward)
+        thumb_y = -18 * mirror  # thumb side offset
+        local_points.append((3, thumb_y))  # CMC
+        local_points.append((12, thumb_y - 8 * mirror))  # MCP
+        local_points.append((20, thumb_y - 10 * mirror))  # IP
+        local_points.append((26, thumb_y - 12 * mirror))  # TIP
+        
+        # Finger MCP positions (across palm width)
+        mcp_y = {
+            'index': -palm_width * 0.4 * mirror,
+            'middle': -palm_width * 0.15 * mirror,
+            'ring': palm_width * 0.15 * mirror,
+            'pinky': palm_width * 0.45 * mirror,
+        }
+        
+        # Finger lengths
+        finger_lens = {
+            'index': seg * 3.2,
+            'middle': seg * 3.5,
+            'ring': seg * 3.2,
+            'pinky': seg * 2.8,
+        }
+        
+        # Generate 4 fingers
+        for finger in ['index', 'middle', 'ring', 'pinky']:
+            base_x = palm_depth
+            base_y = mcp_y[finger]
+            length = finger_lens[finger]
+            seg_len = length / 3
+            
+            local_points.append((base_x, base_y))  # MCP
+            local_points.append((base_x + seg_len, base_y))  # PIP
+            local_points.append((base_x + seg_len * 2, base_y))  # DIP
+            local_points.append((base_x + seg_len * 3, base_y))  # TIP
+        
+        # Rotate all points by arm angle and translate to wrist
+        for lx, ly in local_points:
+            # Rotate around origin
+            rx = lx * math.cos(arm_angle) - ly * math.sin(arm_angle)
+            ry = lx * math.sin(arm_angle) + ly * math.cos(arm_angle)
+            # Translate to wrist position
+            landmarks.append([wx + rx, wy + ry, 0])
+        
+        return np.array(landmarks, dtype=np.float32)
+    
+    # Default face offsets relative to shoulder center
+    # Face is above shoulders, centered
+    DEFAULT_FACE_OFFSETS = np.array([
+        [0, -80, 0],    # Nose tip (centered, above shoulders)
+        [-25, -70, 0],  # Left eye
+        [25, -70, 0],   # Right eye
+        [0, -55, 0],    # Mouth center
     ], dtype=np.float32)
     
     @staticmethod
@@ -125,50 +209,136 @@ class SkeletonDrawer:
         return not (np.abs(coords).max() < 1.0)
     
     @staticmethod
-    def _get_wrist_position(pose: np.ndarray, is_left: bool) -> Tuple[float, float]:
-        """Get wrist position from pose landmarks.
+    def _is_face_valid(face: np.ndarray) -> bool:
+        """Check if face data is valid (not all zeros)."""
+        if face is None or len(face) == 0:
+            return False
+        coords = face[:, :2]
+        return not (np.abs(coords).max() < 1.0)
+    
+    @staticmethod
+    def _get_arm_vector(pose: np.ndarray, is_left: bool) -> Tuple[np.ndarray, np.ndarray]:
+        """Get elbow and wrist positions for calculating arm direction.
         
-        For 6-landmark reduced pose: indices 4 (left wrist) and 5 (right wrist)
-        For full 33-landmark pose: indices 15 (left wrist) and 16 (right wrist)
+        Returns:
+            (elbow_pos, wrist_pos) as numpy arrays, or (None, None) if not available
         """
-        if pose is None:
-            return None
+        if pose is None or len(pose) < 6:
+            return None, None
         
         if len(pose) == 6:
-            # Reduced pose: 0=left_shoulder, 1=right_shoulder, 2=left_elbow, 
-            #               3=right_elbow, 4=left_wrist, 5=right_wrist
+            # Reduced pose: 2=left_elbow, 3=right_elbow, 4=left_wrist, 5=right_wrist
+            elbow_idx = 2 if is_left else 3
             wrist_idx = 4 if is_left else 5
         else:
             # Full pose
+            elbow_idx = 13 if is_left else 14
             wrist_idx = 15 if is_left else 16
         
-        if wrist_idx < len(pose):
-            return pose[wrist_idx][:2]
-        return None
+        if elbow_idx < len(pose) and wrist_idx < len(pose):
+            return pose[elbow_idx][:2].copy(), pose[wrist_idx][:2].copy()
+        return None, None
     
     @staticmethod
-    def _create_placeholder_hand(wrist_pos: Tuple[float, float], is_left: bool, scale: float = 0.5) -> np.ndarray:
-        """Create placeholder hand at wrist position.
+    def _rotate_points(points: np.ndarray, angle: float, center: np.ndarray) -> np.ndarray:
+        """Rotate points around a center by given angle (radians).
         
         Args:
-            wrist_pos: (x, y) wrist position
-            is_left: True for left hand, False for right (affects mirroring)
-            scale: Scale factor for hand size
+            points: (N, 3) array of points
+            angle: Rotation angle in radians
+            center: (2,) center point for rotation
         
         Returns:
-            Hand landmarks array (21, 3)
+            Rotated points array
         """
-        hand = SkeletonDrawer.DEFAULT_HAND_OFFSETS.copy() * scale
+        result = points.copy()
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
         
-        # Mirror for right hand
-        if not is_left:
-            hand[:, 0] = -hand[:, 0]
+        # Translate to origin
+        result[:, 0] -= center[0]
+        result[:, 1] -= center[1]
         
-        # Translate to wrist position
-        hand[:, 0] += wrist_pos[0]
-        hand[:, 1] += wrist_pos[1]
+        # Rotate
+        x_new = result[:, 0] * cos_a - result[:, 1] * sin_a
+        y_new = result[:, 0] * sin_a + result[:, 1] * cos_a
+        
+        result[:, 0] = x_new + center[0]
+        result[:, 1] = y_new + center[1]
+        
+        return result
+    
+    @staticmethod
+    def _create_placeholder_hand(pose: np.ndarray, is_left: bool, scale: float = 1.0) -> np.ndarray:
+        """Create placeholder hand using reference body proportions.
+        
+        The hand is attached to the wrist and oriented along the forearm
+        direction (from elbow to wrist), creating a natural "relaxed" position.
+        
+        Uses the same proportions as show_reference_body.py for consistency,
+        so when real data returns, the transition is seamless.
+        
+        Args:
+            pose: Pose landmarks array
+            is_left: True for left hand, False for right
+            scale: Scale factor for hand size (1.0 = reference proportions)
+        
+        Returns:
+            Hand landmarks array (21, 3) positioned and oriented correctly
+        """
+        elbow_pos, wrist_pos = SkeletonDrawer._get_arm_vector(pose, is_left)
+        
+        if wrist_pos is None:
+            return None
+        
+        # Calculate arm direction (elbow → wrist)
+        if elbow_pos is not None:
+            arm_vec = wrist_pos - elbow_pos
+            length = np.sqrt(arm_vec[0]**2 + arm_vec[1]**2)
+            if length > 0:
+                arm_direction = (arm_vec[0] / length, arm_vec[1] / length)
+            else:
+                arm_direction = (1, 0) if not is_left else (-1, 0)
+        else:
+            # Default direction when no elbow data
+            arm_direction = (1, 0) if not is_left else (-1, 0)
+        
+        # Generate reference hand with correct orientation
+        hand = SkeletonDrawer._generate_reference_hand(wrist_pos, arm_direction, is_left)
+        
+        # Apply scale if needed
+        if scale != 1.0 and hand is not None:
+            # Scale around wrist position
+            wx, wy = wrist_pos
+            hand[:, 0] = (hand[:, 0] - wx) * scale + wx
+            hand[:, 1] = (hand[:, 1] - wy) * scale + wy
         
         return hand
+    
+    @staticmethod
+    def _create_placeholder_face(pose: np.ndarray, scale: float = 1.0) -> np.ndarray:
+        """Create placeholder face positioned above shoulders.
+        
+        Args:
+            pose: Pose landmarks array  
+            scale: Scale factor for face size
+        
+        Returns:
+            Face landmarks array (4, 3) positioned correctly
+        """
+        if pose is None or len(pose) < 2:
+            return None
+        
+        # Calculate shoulder center
+        left_shoulder = pose[0][:2]
+        right_shoulder = pose[1][:2]
+        shoulder_center = (left_shoulder + right_shoulder) / 2
+        
+        # Create face at neutral position above shoulders
+        face = SkeletonDrawer.DEFAULT_FACE_OFFSETS.copy() * scale
+        face[:, 0] += shoulder_center[0]
+        face[:, 1] += shoulder_center[1]
+        
+        return face
     
     @staticmethod
     def draw_skeleton(
@@ -218,64 +388,62 @@ class SkeletonDrawer:
                         cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
                                   SkeletonDrawer.COLOR_JOINT, -1)
         
-        # Get pose for wrist positions (needed for placeholder hands)
+        # Get pose for placeholder generation (needed for arm-angle-aware hands)
         pose = landmarks.get('pose')
         
         # Draw left hand skeleton
         left_hand = landmarks.get('left_hand')
-        if left_hand is not None:
+        if left_hand is not None or pose is not None:
             # Check if hand data is valid (not zeros)
-            if not SkeletonDrawer._is_hand_valid(left_hand):
-                # Create placeholder hand at wrist position
-                wrist_pos = SkeletonDrawer._get_wrist_position(pose, is_left=True)
-                if wrist_pos is not None:
-                    left_hand = SkeletonDrawer._create_placeholder_hand(wrist_pos, is_left=True)
+            if left_hand is None or not SkeletonDrawer._is_hand_valid(left_hand):
+                # Create placeholder hand oriented along arm direction
+                left_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=True)
             
-            for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
-                if idx1 < len(left_hand) and idx2 < len(left_hand):
-                    pt1 = tuple(map(int, left_hand[idx1][:2]))
-                    pt2 = tuple(map(int, left_hand[idx2][:2]))
-                    
-                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                       SkeletonDrawer._is_valid_point(pt2, h, w):
-                        cv2.line(frame, pt1, pt2,
-                                SkeletonDrawer.COLOR_LEFT_HAND,
-                                SkeletonDrawer.THICKNESS_LINE)
-            
-            if show_joints:
-                for point in left_hand:
-                    pt = tuple(map(int, point[:2]))
-                    if SkeletonDrawer._is_valid_point(pt, h, w):
-                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                  SkeletonDrawer.COLOR_LEFT_HAND, -1)
+            if left_hand is not None:
+                for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
+                    if idx1 < len(left_hand) and idx2 < len(left_hand):
+                        pt1 = tuple(map(int, left_hand[idx1][:2]))
+                        pt2 = tuple(map(int, left_hand[idx2][:2]))
+                        
+                        if SkeletonDrawer._is_valid_point(pt1, h, w) and \
+                           SkeletonDrawer._is_valid_point(pt2, h, w):
+                            cv2.line(frame, pt1, pt2,
+                                    SkeletonDrawer.COLOR_LEFT_HAND,
+                                    SkeletonDrawer.THICKNESS_LINE)
+                
+                if show_joints:
+                    for point in left_hand:
+                        pt = tuple(map(int, point[:2]))
+                        if SkeletonDrawer._is_valid_point(pt, h, w):
+                            cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
+                                      SkeletonDrawer.COLOR_LEFT_HAND, -1)
         
         # Draw right hand skeleton
         right_hand = landmarks.get('right_hand')
-        if right_hand is not None:
+        if right_hand is not None or pose is not None:
             # Check if hand data is valid (not zeros)
-            if not SkeletonDrawer._is_hand_valid(right_hand):
-                # Create placeholder hand at wrist position
-                wrist_pos = SkeletonDrawer._get_wrist_position(pose, is_left=False)
-                if wrist_pos is not None:
-                    right_hand = SkeletonDrawer._create_placeholder_hand(wrist_pos, is_left=False)
+            if right_hand is None or not SkeletonDrawer._is_hand_valid(right_hand):
+                # Create placeholder hand oriented along arm direction
+                right_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=False)
             
-            for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
-                if idx1 < len(right_hand) and idx2 < len(right_hand):
-                    pt1 = tuple(map(int, right_hand[idx1][:2]))
-                    pt2 = tuple(map(int, right_hand[idx2][:2]))
-                    
-                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                       SkeletonDrawer._is_valid_point(pt2, h, w):
-                        cv2.line(frame, pt1, pt2,
-                                SkeletonDrawer.COLOR_RIGHT_HAND,
-                                SkeletonDrawer.THICKNESS_LINE)
-            
-            if show_joints:
-                for point in right_hand:
-                    pt = tuple(map(int, point[:2]))
-                    if SkeletonDrawer._is_valid_point(pt, h, w):
-                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                  SkeletonDrawer.COLOR_RIGHT_HAND, -1)
+            if right_hand is not None:
+                for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
+                    if idx1 < len(right_hand) and idx2 < len(right_hand):
+                        pt1 = tuple(map(int, right_hand[idx1][:2]))
+                        pt2 = tuple(map(int, right_hand[idx2][:2]))
+                        
+                        if SkeletonDrawer._is_valid_point(pt1, h, w) and \
+                           SkeletonDrawer._is_valid_point(pt2, h, w):
+                            cv2.line(frame, pt1, pt2,
+                                    SkeletonDrawer.COLOR_RIGHT_HAND,
+                                    SkeletonDrawer.THICKNESS_LINE)
+                
+                if show_joints:
+                    for point in right_hand:
+                        pt = tuple(map(int, point[:2]))
+                        if SkeletonDrawer._is_valid_point(pt, h, w):
+                            cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
+                                      SkeletonDrawer.COLOR_RIGHT_HAND, -1)
         
         # Add language label
         cv2.putText(frame, lang, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,

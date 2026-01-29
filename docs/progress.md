@@ -1,8 +1,50 @@
 # Progress Log
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
-**Last Updated:** January 25, 2026  
-**Status:** 🔴 CRITICAL DATA QUALITY ISSUE IDENTIFIED
+**Last Updated:** January 29, 2026  
+**Status:** 🟢 REFERENCE BODY IMPROVEMENTS COMPLETE
+
+---
+
+## 🟢 Jan 29, 2026 - Reference Body & Placeholder Logic
+
+### Completed Work
+
+**Dynamic Y Centering:**
+- ✅ Added vertical adjustment to `normalize_to_reference_body()`
+- ✅ Calculates min/max Y of all landmarks, shifts if out of bounds
+- ✅ Fixed hello_1 out-of-bounds issue (hands above frame)
+- ✅ 16/16 signatures now pass normalization test
+
+**Reference Hand Placeholders:**
+- ✅ Replaced hardcoded `DEFAULT_HAND_OFFSETS` with `_generate_reference_hand()` method
+- ✅ Uses same proportions as `show_reference_body.py` (palm_depth=25, palm_width=35, seg=10)
+- ✅ Procedurally generates all 21 hand landmarks
+- ✅ Properly orients along arm direction (elbow → wrist)
+- ✅ Correctly mirrors for left vs right hand
+- ✅ ~60px wrist-to-fingertip span (matches reference body)
+
+**Key Design Decision - Keep It Simple:**
+Considered extending placeholder logic for partial landmark loss (e.g., elbow missing but shoulder/wrist present). 
+**Decision: NOT NEEDED** because:
+1. MediaPipe detects body parts as units - doesn't give "fingers but no wrist"
+2. Partial landmark loss within a body part is extremely rare
+3. Current logic already handles the real problem: hand tracking fails while pose exists
+4. Over-engineering would add complexity for edge cases that essentially never occur
+
+**Current fallback behavior:**
+- Hand data missing → attach placeholder to wrist from pose ✅
+- Elbow missing → use default arm direction ✅
+
+### Architecture Insight
+
+The reference body in `show_reference_body.py` defines canonical proportions:
+- SHOULDER_WIDTH = 100px
+- ARM_LENGTH = 100px (upper 55%, lower 45%)
+- PALM_WIDTH = 35px, PALM_DEPTH = 25px
+- Finger segments = 10px each
+
+When real data is missing, placeholders use these proportions. When real data returns, transitions are seamless because both use biologically consistent proportions.
 
 ---
 
