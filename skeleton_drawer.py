@@ -385,13 +385,20 @@ class SkeletonDrawer:
         # Calculate shoulder center (this becomes frame center)
         shoulder_center = (left_shoulder + right_shoulder) / 2
         
-        # Target center (middle of frame, slightly above center for signing space)
-        target_center = np.array([frame_width / 2, frame_height * 0.4])
+        # First pass: scale all points to find bounds
+        scaled_points = {}
+        min_y = float('inf')
+        max_y = float('-inf')
         
-        # Transform each component: translate to origin, scale, translate to target
         for key in ['pose', 'left_hand', 'right_hand', 'face']:
             if landmarks.get(key) is not None and len(landmarks[key]) > 0:
                 points = landmarks[key].copy()
+                
+                # Skip invalid hand data (all zeros)
+                if key in ['left_hand', 'right_hand']:
+                    if np.abs(points[:, :2]).max() < 1.0:
+                        scaled_points[key] = points
+                        continue
                 
                 # Translate: shoulder center to origin
                 points[:, 0] -= shoulder_center[0]
@@ -401,7 +408,43 @@ class SkeletonDrawer:
                 points[:, 0] *= scale
                 points[:, 1] *= scale
                 
-                # Translate: origin to target center
+                scaled_points[key] = points
+                
+                # Track Y bounds
+                min_y = min(min_y, points[:, 1].min())
+                max_y = max(max_y, points[:, 1].max())
+        
+        # Calculate target center with dynamic Y adjustment
+        # Default: 40% from top (192px for 480px frame)
+        # Adjust if content would go out of bounds
+        target_x = frame_width / 2
+        target_y = frame_height * 0.4
+        
+        # If min_y (after centering at target_y) would be < 10, shift down
+        margin = 10  # Pixels from edge
+        if min_y + target_y < margin:
+            target_y = margin - min_y
+        
+        # If max_y would exceed frame, shift up (but not past margin)
+        if max_y + target_y > frame_height - margin:
+            target_y = frame_height - margin - max_y
+            # But don't go too high
+            if min_y + target_y < margin:
+                target_y = margin - min_y
+        
+        target_center = np.array([target_x, target_y])
+        
+        # Second pass: translate to target center
+        for key in ['pose', 'left_hand', 'right_hand', 'face']:
+            if key in scaled_points:
+                points = scaled_points[key]
+                
+                # Skip invalid hand data
+                if key in ['left_hand', 'right_hand']:
+                    if np.abs(points[:, :2]).max() < 1.0:
+                        result[key] = points
+                        continue
+                
                 points[:, 0] += target_center[0]
                 points[:, 1] += target_center[1]
                 
