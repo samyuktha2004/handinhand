@@ -341,6 +341,97 @@ class SkeletonDrawer:
         return face
     
     @staticmethod
+    def _create_placeholder_pose(left_hand: np.ndarray = None, right_hand: np.ndarray = None, 
+                                  canvas_width: int = 640, canvas_height: int = 480) -> np.ndarray:
+        """Create placeholder pose (upper body) inferred from hand positions.
+        
+        When only hands are tracked but no pose, we need to infer where
+        the body should be. This ensures smooth transitions between signs.
+        
+        Uses reference body proportions:
+        - SHOULDER_WIDTH = 100px
+        - UPPER_ARM = 55px (shoulder to elbow)  
+        - LOWER_ARM = 45px (elbow to wrist)
+        
+        Args:
+            left_hand: Left hand landmarks (wrist at index 0), or None
+            right_hand: Right hand landmarks (wrist at index 0), or None
+            canvas_width: Frame width for centering
+            canvas_height: Frame height for positioning
+        
+        Returns:
+            Pose landmarks array (6, 3): [left_shoulder, right_shoulder, 
+                                          left_elbow, right_elbow,
+                                          left_wrist, right_wrist]
+        """
+        # Reference proportions
+        SHOULDER_WIDTH = 100
+        UPPER_ARM = 55
+        LOWER_ARM = 45
+        
+        # Get wrist positions from hands (landmark 0 is wrist)
+        left_wrist = left_hand[0][:2] if left_hand is not None and len(left_hand) > 0 else None
+        right_wrist = right_hand[0][:2] if right_hand is not None and len(right_hand) > 0 else None
+        
+        # If no hands at all, create centered default pose
+        if left_wrist is None and right_wrist is None:
+            center_x = canvas_width / 2
+            shoulder_y = canvas_height * 0.3  # Shoulders at 30% from top
+            
+            left_shoulder = np.array([center_x - SHOULDER_WIDTH/2, shoulder_y])
+            right_shoulder = np.array([center_x + SHOULDER_WIDTH/2, shoulder_y])
+            left_elbow = np.array([center_x - SHOULDER_WIDTH/2 - 10, shoulder_y + UPPER_ARM])
+            right_elbow = np.array([center_x + SHOULDER_WIDTH/2 + 10, shoulder_y + UPPER_ARM])
+            left_wrist_pos = np.array([center_x - SHOULDER_WIDTH/2 - 15, shoulder_y + UPPER_ARM + LOWER_ARM])
+            right_wrist_pos = np.array([center_x + SHOULDER_WIDTH/2 + 15, shoulder_y + UPPER_ARM + LOWER_ARM])
+        else:
+            # Infer body from available wrist(s)
+            # Estimate shoulder center from wrist positions
+            if left_wrist is not None and right_wrist is not None:
+                # Both hands - use midpoint
+                wrist_center_x = (left_wrist[0] + right_wrist[0]) / 2
+                wrist_center_y = (left_wrist[1] + right_wrist[1]) / 2
+            elif left_wrist is not None:
+                wrist_center_x = left_wrist[0] + SHOULDER_WIDTH / 2
+                wrist_center_y = left_wrist[1]
+            else:
+                wrist_center_x = right_wrist[0] - SHOULDER_WIDTH / 2
+                wrist_center_y = right_wrist[1]
+            
+            # Shoulders are above wrists (arms length up)
+            shoulder_y = wrist_center_y - (UPPER_ARM + LOWER_ARM) * 0.7  # Arms angle down ~45°
+            
+            left_shoulder = np.array([wrist_center_x - SHOULDER_WIDTH/2, shoulder_y])
+            right_shoulder = np.array([wrist_center_x + SHOULDER_WIDTH/2, shoulder_y])
+            
+            # Elbows - positioned between shoulder and wrist
+            if left_wrist is not None:
+                left_elbow = left_shoulder + (left_wrist - left_shoulder) * (UPPER_ARM / (UPPER_ARM + LOWER_ARM))
+            else:
+                left_elbow = np.array([left_shoulder[0] - 10, left_shoulder[1] + UPPER_ARM])
+                
+            if right_wrist is not None:
+                right_elbow = right_shoulder + (right_wrist - right_shoulder) * (UPPER_ARM / (UPPER_ARM + LOWER_ARM))
+            else:
+                right_elbow = np.array([right_shoulder[0] + 10, right_shoulder[1] + UPPER_ARM])
+            
+            # Use actual wrist positions if available, else infer
+            left_wrist_pos = left_wrist if left_wrist is not None else np.array([left_elbow[0] - 5, left_elbow[1] + LOWER_ARM])
+            right_wrist_pos = right_wrist if right_wrist is not None else np.array([right_elbow[0] + 5, right_elbow[1] + LOWER_ARM])
+        
+        # Build pose array: [left_shoulder, right_shoulder, left_elbow, right_elbow, left_wrist, right_wrist]
+        pose = np.array([
+            [left_shoulder[0], left_shoulder[1], 0],
+            [right_shoulder[0], right_shoulder[1], 0],
+            [left_elbow[0], left_elbow[1], 0],
+            [right_elbow[0], right_elbow[1], 0],
+            [left_wrist_pos[0], left_wrist_pos[1], 0],
+            [right_wrist_pos[0], right_wrist_pos[1], 0],
+        ], dtype=np.float32)
+        
+        return pose
+
+    @staticmethod
     def draw_skeleton(
         frame: np.ndarray,
         landmarks: Dict[str, np.ndarray],
@@ -365,9 +456,29 @@ class SkeletonDrawer:
         frame = frame.copy()
         h, w = frame.shape[:2]
         
+        # Get original data
+        pose = landmarks.get('pose')
+        left_hand = landmarks.get('left_hand')
+        right_hand = landmarks.get('right_hand')
+        face = landmarks.get('face')
+        
+        # Check validity of each component
+        pose_valid = pose is not None and len(pose) > 0
+        left_hand_valid = left_hand is not None and SkeletonDrawer._is_hand_valid(left_hand)
+        right_hand_valid = right_hand is not None and SkeletonDrawer._is_hand_valid(right_hand)
+        face_valid = face is not None and SkeletonDrawer._is_face_valid(face)
+        
+        # Create placeholder pose if missing but hands exist
+        if not pose_valid and (left_hand_valid or right_hand_valid):
+            pose = SkeletonDrawer._create_placeholder_pose(
+                left_hand if left_hand_valid else None,
+                right_hand if right_hand_valid else None,
+                w, h
+            )
+            pose_valid = True
+        
         # Draw pose skeleton (body)
-        if 'pose' in landmarks and landmarks['pose'] is not None:
-            pose = landmarks['pose']
+        if pose_valid:
             for idx1, idx2 in SkeletonDrawer.POSE_CONNECTIONS:
                 if idx1 < len(pose) and idx2 < len(pose):
                     pt1 = tuple(map(int, pose[idx1][:2]))
@@ -387,19 +498,54 @@ class SkeletonDrawer:
                     if SkeletonDrawer._is_valid_point(pt, h, w):
                         cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
                                   SkeletonDrawer.COLOR_JOINT, -1)
-        
-        # Get pose for placeholder generation (needed for arm-angle-aware hands)
-        pose = landmarks.get('pose')
-        
-        # Draw left hand skeleton
-        left_hand = landmarks.get('left_hand')
-        if left_hand is not None or pose is not None:
-            # Check if hand data is valid (not zeros)
-            if left_hand is None or not SkeletonDrawer._is_hand_valid(left_hand):
-                # Create placeholder hand oriented along arm direction
-                left_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=True)
             
-            if left_hand is not None:
+            # Draw head/face FIRST (before hands, so hands overlay when in front)
+            # Reference body proportions:
+            # - NECK_LENGTH = 35px (shoulder to neck_top)
+            # - HEAD_CENTER = 70px above shoulders
+            # - HEAD_WIDTH = 50px, HEAD_HEIGHT = 70px
+            left_shoulder = pose[0][:2]
+            right_shoulder = pose[1][:2]
+            shoulder_center = (left_shoulder + right_shoulder) / 2
+            
+            HEAD_WIDTH = 50
+            HEAD_HEIGHT = 70
+            NECK_LENGTH = 35
+            
+            # Head center is 70px above shoulders (35 neck + 35 half head)
+            head_center_x = int(shoulder_center[0])
+            head_center_y = int(shoulder_center[1] - NECK_LENGTH - HEAD_HEIGHT // 2)
+            
+            # Draw neck line
+            neck_top = (head_center_x, int(shoulder_center[1] - NECK_LENGTH))
+            shoulder_pt = (int(shoulder_center[0]), int(shoulder_center[1]))
+            if SkeletonDrawer._is_valid_point(neck_top, h, w) and \
+               SkeletonDrawer._is_valid_point(shoulder_pt, h, w):
+                cv2.line(frame, shoulder_pt, neck_top, 
+                        SkeletonDrawer.COLOR_POSE, SkeletonDrawer.THICKNESS_LINE)
+            
+            # Draw head ellipse
+            if 0 < head_center_x < w and 0 < head_center_y < h:
+                cv2.ellipse(frame, (head_center_x, head_center_y), 
+                           (HEAD_WIDTH // 2, HEAD_HEIGHT // 2), 
+                           0, 0, 360, SkeletonDrawer.COLOR_POSE, 2)
+                
+                # Simple face features
+                eye_y = head_center_y - 10
+                cv2.circle(frame, (head_center_x - 12, eye_y), 4, SkeletonDrawer.COLOR_POSE, -1)
+                cv2.circle(frame, (head_center_x + 12, eye_y), 4, SkeletonDrawer.COLOR_POSE, -1)
+                
+                # Mouth
+                mouth_y = head_center_y + 15
+                cv2.ellipse(frame, (head_center_x, mouth_y), (10, 5), 
+                           0, 10, 170, SkeletonDrawer.COLOR_POSE, 2)
+        
+        # Draw left hand skeleton (use placeholder if invalid)
+        if not left_hand_valid and pose_valid:
+            left_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=True)
+            left_hand_valid = left_hand is not None
+        
+        if left_hand_valid and left_hand is not None:
                 for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
                     if idx1 < len(left_hand) and idx2 < len(left_hand):
                         pt1 = tuple(map(int, left_hand[idx1][:2]))
@@ -418,32 +564,29 @@ class SkeletonDrawer:
                             cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
                                       SkeletonDrawer.COLOR_LEFT_HAND, -1)
         
-        # Draw right hand skeleton
-        right_hand = landmarks.get('right_hand')
-        if right_hand is not None or pose is not None:
-            # Check if hand data is valid (not zeros)
-            if right_hand is None or not SkeletonDrawer._is_hand_valid(right_hand):
-                # Create placeholder hand oriented along arm direction
-                right_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=False)
+        # Draw right hand skeleton (use placeholder if invalid)
+        if not right_hand_valid and pose_valid:
+            right_hand = SkeletonDrawer._create_placeholder_hand(pose, is_left=False)
+            right_hand_valid = right_hand is not None
+        
+        if right_hand_valid and right_hand is not None:
+            for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
+                if idx1 < len(right_hand) and idx2 < len(right_hand):
+                    pt1 = tuple(map(int, right_hand[idx1][:2]))
+                    pt2 = tuple(map(int, right_hand[idx2][:2]))
+                    
+                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
+                       SkeletonDrawer._is_valid_point(pt2, h, w):
+                        cv2.line(frame, pt1, pt2,
+                                SkeletonDrawer.COLOR_RIGHT_HAND,
+                                SkeletonDrawer.THICKNESS_LINE)
             
-            if right_hand is not None:
-                for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
-                    if idx1 < len(right_hand) and idx2 < len(right_hand):
-                        pt1 = tuple(map(int, right_hand[idx1][:2]))
-                        pt2 = tuple(map(int, right_hand[idx2][:2]))
-                        
-                        if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                           SkeletonDrawer._is_valid_point(pt2, h, w):
-                            cv2.line(frame, pt1, pt2,
-                                    SkeletonDrawer.COLOR_RIGHT_HAND,
-                                    SkeletonDrawer.THICKNESS_LINE)
-                
-                if show_joints:
-                    for point in right_hand:
-                        pt = tuple(map(int, point[:2]))
-                        if SkeletonDrawer._is_valid_point(pt, h, w):
-                            cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                      SkeletonDrawer.COLOR_RIGHT_HAND, -1)
+            if show_joints:
+                for point in right_hand:
+                    pt = tuple(map(int, point[:2]))
+                    if SkeletonDrawer._is_valid_point(pt, h, w):
+                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
+                                  SkeletonDrawer.COLOR_RIGHT_HAND, -1)
         
         # Add language label
         cv2.putText(frame, lang, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,

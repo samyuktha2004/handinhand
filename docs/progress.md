@@ -11,12 +11,14 @@
 ### Completed Work
 
 **Dynamic Y Centering:**
+
 - ✅ Added vertical adjustment to `normalize_to_reference_body()`
 - ✅ Calculates min/max Y of all landmarks, shifts if out of bounds
 - ✅ Fixed hello_1 out-of-bounds issue (hands above frame)
 - ✅ 16/16 signatures now pass normalization test
 
 **Reference Hand Placeholders:**
+
 - ✅ Replaced hardcoded `DEFAULT_HAND_OFFSETS` with `_generate_reference_hand()` method
 - ✅ Uses same proportions as `show_reference_body.py` (palm_depth=25, palm_width=35, seg=10)
 - ✅ Procedurally generates all 21 hand landmarks
@@ -24,21 +26,42 @@
 - ✅ Correctly mirrors for left vs right hand
 - ✅ ~60px wrist-to-fingertip span (matches reference body)
 
-**Key Design Decision - Keep It Simple:**
-Considered extending placeholder logic for partial landmark loss (e.g., elbow missing but shoulder/wrist present). 
-**Decision: NOT NEEDED** because:
-1. MediaPipe detects body parts as units - doesn't give "fingers but no wrist"
-2. Partial landmark loss within a body part is extremely rare
-3. Current logic already handles the real problem: hand tracking fails while pose exists
-4. Over-engineering would add complexity for edge cases that essentially never occur
+**Complete Placeholder System (Smooth Transitions):**
 
-**Current fallback behavior:**
-- Hand data missing → attach placeholder to wrist from pose ✅
-- Elbow missing → use default arm direction ✅
+Added full placeholder support for seamless transitions between signs:
+
+| Missing Component | Inferred From        | Method                       |
+| ----------------- | -------------------- | ---------------------------- |
+| Hands             | Pose wrists          | `_create_placeholder_hand()` |
+| Pose (body)       | Hand wrist positions | `_create_placeholder_pose()` |
+| Face              | Shoulder center      | `_create_placeholder_face()` |
+
+Key insight: Different signs may have different body parts tracked. When transitioning
+from a "hands-only" sign to a "full body" sign, the body can't suddenly spawn - we
+need placeholders to ensure smooth visual continuity.
+
+**`_create_placeholder_pose()` logic:**
+
+- If both hands: infer shoulders above the midpoint between wrists
+- If one hand: offset shoulders to that side
+- If no hands: centered default pose
+- Uses reference proportions: SHOULDER_WIDTH=100, UPPER_ARM=55, LOWER_ARM=45
+
+**Design Decisions:**
+
+1. **Partial landmark loss within a body part (e.g., "elbow missing")**: NOT NEEDED
+   - MediaPipe detects body parts as units
+   - Partial loss is extremely rare
+
+2. **Different body parts across signs**: NEEDED ✅
+   - Sign A may only track hands
+   - Sign B may track full body
+   - Placeholders ensure smooth transitions
 
 ### Architecture Insight
 
 The reference body in `show_reference_body.py` defines canonical proportions:
+
 - SHOULDER_WIDTH = 100px
 - ARM_LENGTH = 100px (upper 55%, lower 45%)
 - PALM_WIDTH = 35px, PALM_DEPTH = 25px
