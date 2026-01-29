@@ -22,6 +22,7 @@
 - ✅ Raw landmarks used for corruption check (placeholders don't interfere)
 
 **Audit Results:**
+
 - `hello` variants: ✅ Consistent
 - `you` variants: ⚠️ `you_0` has different motion (z=2.1)
 - `go` variants: ⚠️ `go_1` uses different hand (right vs both)
@@ -30,21 +31,23 @@
 
 Created comprehensive [docs/CODE_AUDIT.md](docs/CODE_AUDIT.md) with:
 
-| Category | Files | Action |
-|----------|-------|--------|
-| Core Files | 8 | Keep & maintain |
-| Debug Files | 8 | DELETE |
-| Test Files | 4 | DELETE (covered by debugger) |
-| Migration Scripts | 5 | DELETE (migration done) |
-| Setup Scripts | 4 | Archive |
+| Category          | Files | Action                       |
+| ----------------- | ----- | ---------------------------- |
+| Core Files        | 8     | Keep & maintain              |
+| Debug Files       | 8     | DELETE                       |
+| Test Files        | 4     | DELETE (covered by debugger) |
+| Migration Scripts | 5     | DELETE (migration done)      |
+| Setup Scripts     | 4     | Archive                      |
 
 **Files to Delete (17 total):**
+
 - `debug_*.py` (4 files)
 - `analyze_*.py`, `check_*.py` (4 files)
 - `test_placeholder_hands.py`, `test_reference_normalization.py`, etc. (4 files)
 - `scripts/migration_*.py`, `scripts/verify_migration.py`, etc. (5 files)
 
 **Key Findings:**
+
 - No major variable naming inconsistencies
 - `recognition_engine.py` and `recognition_engine_ui.py` share ~40% code → merge candidate
 - Missing `utils/__init__.py`
