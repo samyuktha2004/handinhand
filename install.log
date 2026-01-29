@@ -1,4 +1,0 @@
-Collecting opencv-python>=4.8.0 (from -r requirements.txt (line 2))
-  Using cached opencv_python-4.13.0.90-cp37-abi3-macosx_14_0_x86_64.whl.metadata (19 kB)
-ERROR: Could not find a version that satisfies the requirement mediapipe>=0.10.0 (from versions: none)
-ERROR: No matching distribution found for mediapipe>=0.10.0

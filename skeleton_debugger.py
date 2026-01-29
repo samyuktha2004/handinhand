@@ -5,9 +5,17 @@ Skeleton Debugger: Dual-Signature Viewer
 Load two signatures (ASL + BSL for same concept) and visualize them side-by-side
 as 2D skeletons. Verify:
 - Frame synchronization (start/end alignment)
-- Body-centric normalization (shoulder centering)
+- Body-centric normalization (reference body scaling)
 - Hand shape preservation (one-handed vs two-handed)
 - Movement quality (no jitter, smooth trajectories)
+
+Normalization:
+    By default, all signatures are normalized to REFERENCE BODY proportions:
+    - Shoulder width: 100px (consistent across all signs)
+    - Body centered at frame center, 40% from top
+    - All landmarks (pose, hands, face) scaled uniformly
+    
+    Press 'n' to toggle between NORMALIZED and RAW views.
 
 Usage:
     python3 skeleton_debugger.py                                    # Default: Single-screen ASL hello_0
@@ -19,7 +27,7 @@ Usage:
 Controls:
     SPACE: Play/Pause
     LEFT/RIGHT ARROW: Previous/Next frame
-    'n': Toggle normalization
+    'n': Toggle normalization (NORMALIZED = reference body, RAW = original)
     'd': Toggle joint dots
     'q': Quit
 
@@ -67,9 +75,17 @@ class SkeletonDebugger:
         self.sig1_dict = self._load_signature(sig1_path)
         self.sig2_dict = self._load_signature(sig2_path)
         
-        # Extract landmark frames
-        self.frames1 = extract_landmarks_from_signature(self.sig1_dict)
-        self.frames2 = extract_landmarks_from_signature(self.sig2_dict)
+        # Extract landmark frames - BOTH normalized and raw versions
+        # Normalized: scaled to reference body (100px shoulders, centered)
+        # Raw: original pixel coordinates from signature
+        self.frames1_normalized = extract_landmarks_from_signature(self.sig1_dict, normalize_to_reference=True)
+        self.frames1_raw = extract_landmarks_from_signature(self.sig1_dict, normalize_to_reference=False)
+        self.frames2_normalized = extract_landmarks_from_signature(self.sig2_dict, normalize_to_reference=True)
+        self.frames2_raw = extract_landmarks_from_signature(self.sig2_dict, normalize_to_reference=False)
+        
+        # Active frames (switched by 'n' key)
+        self.frames1 = self.frames1_normalized
+        self.frames2 = self.frames2_normalized
         
         # State
         self.current_frame = 0
@@ -79,10 +95,10 @@ class SkeletonDebugger:
         self.show_joints = True
         self.completed_lang1 = False  # Track if lang1 video finished
         self.completed_lang2 = False  # Track if lang2 video finished
-        # FIX: Signatures use 6-point partial skeleton, not 33-point full skeleton
-        # Normalization assumes 33 points and fails on partial skeletons
-        # DEFAULT: normalize_display OFF for partial skeletons
-        self.normalize_display = False
+        # Reference body normalization: ON by default
+        # When ON: uses frames_normalized (100px shoulders, centered)
+        # When OFF: uses frames_raw (original pixel coordinates)
+        self.normalize_display = True
         
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
@@ -98,39 +114,27 @@ class SkeletonDebugger:
         return np.zeros((self.height, self.width, 3), dtype=np.uint8)
     
     def _get_current_landmarks(self, frame_idx: int, sig_frames: List) -> Dict:
-        """Get landmarks for frame, or empty dict if out of range."""
-        if 0 <= frame_idx < len(sig_frames):
-            landmarks = sig_frames[frame_idx]
-            
-            if self.normalize_display:
-                # Apply body-centric normalization for visual comparison
-                landmarks = SkeletonDrawer.normalize_landmarks(landmarks)
-                
-                # Translate back to frame center for visibility
-                center_x = self.width // 2
-                center_y = self.height // 2
-                
-                normalized = {}
-                for key in landmarks:
-                    if landmarks[key] is not None:
-                        points = landmarks[key].copy()
-                        points[:, 0] += center_x  # Translate X
-                        points[:, 1] += center_y  # Translate Y
-                        normalized[key] = points
-                
-                return normalized
-            else:
-                return landmarks
+        """Get landmarks for frame, or empty dict if out of range.
         
+        Note: Normalization is handled at load time by switching between
+        frames_normalized and frames_raw based on normalize_display toggle.
+        This method simply returns the appropriate frame data.
+        """
+        if 0 <= frame_idx < len(sig_frames):
+            return sig_frames[frame_idx]
         return {}
     
     def _draw_frame_info(self, frame: np.ndarray, frame_num: int, total: int, 
                         sig_name: str, lang: str) -> None:
-        """Draw metadata on frame."""
+        """Draw metadata on frame.
+        
+        Note: frame_num is 0-indexed internally, but displayed as 1-indexed.
+        """
         h, w = frame.shape[:2]
         
-        # Frame counter
-        text = f"{lang} | Frame {frame_num}/{total}"
+        # Frame counter (display as 1-indexed: 1/55 to 55/55)
+        display_frame = frame_num + 1
+        text = f"{lang} | Frame {display_frame}/{total}"
         cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
                    0.7, (200, 200, 200), 2)
         
@@ -366,8 +370,8 @@ class SkeletonDebugger:
         print(f"{'='*60}")
         print(f"Signature 1: {self.sig1_path.stem} ({len(self.frames1)} frames)")
         print(f"Signature 2: {self.sig2_path.stem} ({len(self.frames2)} frames)")
-        print(f"Display mode: {'Side-by-side' if self.side_by_side else 'Toggled'}")
-        print(f"Normalization: {'ON' if self.normalize_display else 'OFF'}")
+        print(f"Display mode: {'Side-by-side' if self.side_by_side else 'Single'}")
+        print(f"Normalization: {'REFERENCE BODY (100px shoulders)' if self.normalize_display else 'RAW'}")
         print(f"\nControls:")
         print(f"  SPACE: Play/Pause")
         print(f"  LEFT/RIGHT: Frame back/forward")
@@ -398,6 +402,15 @@ class SkeletonDebugger:
                 self.is_playing = False
             elif key == ord('n'):  # Toggle normalization
                 self.normalize_display = not self.normalize_display
+                # Switch frame sources based on normalization mode
+                if self.normalize_display:
+                    self.frames1 = self.frames1_normalized
+                    self.frames2 = self.frames2_normalized
+                else:
+                    self.frames1 = self.frames1_raw
+                    self.frames2 = self.frames2_raw
+                mode = 'REFERENCE BODY (100px shoulders)' if self.normalize_display else 'RAW (original)'
+                print(f"Normalization: {mode}")
             elif key == ord('d'):  # Toggle dots
                 self.show_joints = not self.show_joints
             elif key == ord('s'):  # Toggle side-by-side

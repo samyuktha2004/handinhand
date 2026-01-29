@@ -2,6 +2,104 @@
 
 Quick reference for manually testing and running the sign language recognition system.
 
+---
+
+## ⚠️ Terminal Best Practices (Avoid Corruption)
+
+### The Problem
+
+VS Code's integrated terminal with zsh can corrupt multi-line Python commands, especially when using `-c` with complex code or heredocs. This results in garbled output and syntax errors.
+
+### Golden Rules
+
+| ✅ DO                                            | ❌ DON'T                                   |
+| ------------------------------------------------ | ------------------------------------------ |
+| Create `.py` script files for any code > 3 lines | Use `python -c "..."` with multi-line code |
+| Run scripts: `python3 myscript.py`               | Use heredoc `<< 'EOF'` in zsh              |
+| Keep `-c` commands to ONE simple line            | Nest quotes or use complex escaping        |
+| Pipe output: `command \| head -20`               | Run commands with 100+ lines output        |
+| Use `2>&1` for error capture                     | Ignore error output                        |
+
+### Safe Command Examples
+
+```bash
+# ✅ SAFE: Simple one-liner
+python3 -c "print('hello')"
+
+# ✅ SAFE: Run a script
+python3 check_blue_dot.py
+
+# ✅ SAFE: Pipe long output
+python3 test_recognition_quality.py 2>&1 | head -20
+
+# ❌ UNSAFE: Multi-line in -c (will corrupt)
+python3 -c "
+import json
+for i in range(10):
+    print(i)
+"
+
+# ❌ UNSAFE: Heredoc (will corrupt in zsh)
+python3 << 'EOF'
+import json
+print('hello')
+EOF
+```
+
+### Quick Debug Workflow
+
+Instead of inline Python, always create a temp script:
+
+```bash
+# 1. Create script (use VS Code or echo)
+echo "import json; print('test')" > temp_debug.py
+
+# 2. Run it
+python3 temp_debug.py
+
+# 3. Delete when done
+rm temp_debug.py
+```
+
+### If Terminal Becomes Unresponsive
+
+1. **Click the trash icon** on the terminal tab to kill it
+2. Open new terminal: `Terminal → New Terminal` (or `` Ctrl+` ``)
+3. Re-activate venv: `source venv/bin/activate`
+4. Verify: `python3 --version`
+
+### Why This Happens
+
+- zsh processes multi-line input differently than bash
+- VS Code's terminal input buffer can overflow with long commands
+- Python's `-c` flag has escaping issues with nested quotes
+- **Solution:** Always use script files for anything complex
+
+---
+
+## Hand Dropout & Model Robustness
+
+### Does Hand Vanishing Break the Model?
+
+**Short answer: No, but it reduces accuracy.**
+
+**Why it doesn't break:**
+
+- Embedding uses **Global Average Pooling** across all frames
+- Missing hand data = zeros for that frame's hand portion
+- Average still computed from all frames with valid data
+- Model is robust to ~40% dropout (tested)
+
+**Current dropout rates:**
+| Signature | Left Hand | Right Hand |
+|-----------|-----------|------------|
+| hello_0 | 14.5% | 100% |
+| hello_1 | 0% | 26% |
+
+**Impact:** Lower hand presence → lower recognition confidence, but still works above 0.70 threshold.
+
+---
+
 ## Skeleton Viewer (skeleton_debugger.py)
 
 ### Dual-Display Mode (ASL vs BSL)

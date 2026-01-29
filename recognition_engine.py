@@ -122,9 +122,11 @@ class RecognitionEngine:
 
     def _normalize_landmarks(self, landmarks: np.ndarray) -> np.ndarray:
         """
-        Normalize landmarks to be body-centric (relative to shoulder center).
+        Normalize landmarks to be body-centric and scale-invariant.
         
-        Same normalization as used in embedding generation.
+        Same normalization as used in embedding generation:
+        1. Center on shoulder midpoint (translation invariance)
+        2. Divide by shoulder width (scale invariance)
         """
         if landmarks.shape[0] <= 12:
             return landmarks
@@ -134,9 +136,14 @@ class RecognitionEngine:
         shoulder_right = landmarks[SHOULDER_CENTER_RIGHT][:2]
         shoulder_center = (shoulder_left + shoulder_right) / 2.0
         
-        # Normalize: subtract shoulder center from all points (x, y only)
+        # Step 1: Translation invariance - center on shoulders
         landmarks_normalized = landmarks.copy()
         landmarks_normalized[:, :2] -= shoulder_center
+        
+        # Step 2: Scale invariance - normalize by shoulder width
+        shoulder_width = np.linalg.norm(shoulder_left - shoulder_right)
+        if shoulder_width > 0.01:  # Avoid division by zero
+            landmarks_normalized[:, :2] /= shoulder_width
         
         return landmarks_normalized
 

@@ -88,6 +88,88 @@ class SkeletonDrawer:
     THICKNESS_JOINT = 4
     JOINT_RADIUS = 3
     
+    # Default hand shape for when hand data is missing/zeros
+    # This is a simple "open hand" pattern relative to wrist (0,0)
+    # Based on typical hand proportions: palm ~35px, fingers ~25px
+    DEFAULT_HAND_OFFSETS = np.array([
+        [0, 0, 0],      # 0: Wrist
+        [8, -5, 0],     # 1: Thumb CMC
+        [15, -12, 0],   # 2: Thumb MCP
+        [20, -18, 0],   # 3: Thumb IP
+        [25, -22, 0],   # 4: Thumb tip
+        [5, -20, 0],    # 5: Index MCP
+        [5, -30, 0],    # 6: Index PIP
+        [5, -38, 0],    # 7: Index DIP
+        [5, -45, 0],    # 8: Index tip
+        [0, -22, 0],    # 9: Middle MCP
+        [0, -33, 0],    # 10: Middle PIP
+        [0, -42, 0],    # 11: Middle DIP
+        [0, -50, 0],    # 12: Middle tip
+        [-5, -20, 0],   # 13: Ring MCP
+        [-5, -30, 0],   # 14: Ring PIP
+        [-5, -38, 0],   # 15: Ring DIP
+        [-5, -45, 0],   # 16: Ring tip
+        [-10, -18, 0],  # 17: Pinky MCP
+        [-10, -26, 0],  # 18: Pinky PIP
+        [-10, -32, 0],  # 19: Pinky DIP
+        [-10, -38, 0],  # 20: Pinky tip
+    ], dtype=np.float32)
+    
+    @staticmethod
+    def _is_hand_valid(hand: np.ndarray) -> bool:
+        """Check if hand data is valid (not all zeros)."""
+        if hand is None or len(hand) == 0:
+            return False
+        # Hand is invalid if all x,y coordinates are 0 or near 0
+        coords = hand[:, :2]
+        return not (np.abs(coords).max() < 1.0)
+    
+    @staticmethod
+    def _get_wrist_position(pose: np.ndarray, is_left: bool) -> Tuple[float, float]:
+        """Get wrist position from pose landmarks.
+        
+        For 6-landmark reduced pose: indices 4 (left wrist) and 5 (right wrist)
+        For full 33-landmark pose: indices 15 (left wrist) and 16 (right wrist)
+        """
+        if pose is None:
+            return None
+        
+        if len(pose) == 6:
+            # Reduced pose: 0=left_shoulder, 1=right_shoulder, 2=left_elbow, 
+            #               3=right_elbow, 4=left_wrist, 5=right_wrist
+            wrist_idx = 4 if is_left else 5
+        else:
+            # Full pose
+            wrist_idx = 15 if is_left else 16
+        
+        if wrist_idx < len(pose):
+            return pose[wrist_idx][:2]
+        return None
+    
+    @staticmethod
+    def _create_placeholder_hand(wrist_pos: Tuple[float, float], is_left: bool, scale: float = 0.5) -> np.ndarray:
+        """Create placeholder hand at wrist position.
+        
+        Args:
+            wrist_pos: (x, y) wrist position
+            is_left: True for left hand, False for right (affects mirroring)
+            scale: Scale factor for hand size
+        
+        Returns:
+            Hand landmarks array (21, 3)
+        """
+        hand = SkeletonDrawer.DEFAULT_HAND_OFFSETS.copy() * scale
+        
+        # Mirror for right hand
+        if not is_left:
+            hand[:, 0] = -hand[:, 0]
+        
+        # Translate to wrist position
+        hand[:, 0] += wrist_pos[0]
+        hand[:, 1] += wrist_pos[1]
+        
+        return hand
+    
     @staticmethod
     def draw_skeleton(
         frame: np.ndarray,
@@ -136,9 +218,19 @@ class SkeletonDrawer:
                         cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
                                   SkeletonDrawer.COLOR_JOINT, -1)
         
+        # Get pose for wrist positions (needed for placeholder hands)
+        pose = landmarks.get('pose')
+        
         # Draw left hand skeleton
-        if 'left_hand' in landmarks and landmarks['left_hand'] is not None:
-            left_hand = landmarks['left_hand']
+        left_hand = landmarks.get('left_hand')
+        if left_hand is not None:
+            # Check if hand data is valid (not zeros)
+            if not SkeletonDrawer._is_hand_valid(left_hand):
+                # Create placeholder hand at wrist position
+                wrist_pos = SkeletonDrawer._get_wrist_position(pose, is_left=True)
+                if wrist_pos is not None:
+                    left_hand = SkeletonDrawer._create_placeholder_hand(wrist_pos, is_left=True)
+            
             for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
                 if idx1 < len(left_hand) and idx2 < len(left_hand):
                     pt1 = tuple(map(int, left_hand[idx1][:2]))
@@ -158,8 +250,15 @@ class SkeletonDrawer:
                                   SkeletonDrawer.COLOR_LEFT_HAND, -1)
         
         # Draw right hand skeleton
-        if 'right_hand' in landmarks and landmarks['right_hand'] is not None:
-            right_hand = landmarks['right_hand']
+        right_hand = landmarks.get('right_hand')
+        if right_hand is not None:
+            # Check if hand data is valid (not zeros)
+            if not SkeletonDrawer._is_hand_valid(right_hand):
+                # Create placeholder hand at wrist position
+                wrist_pos = SkeletonDrawer._get_wrist_position(pose, is_left=False)
+                if wrist_pos is not None:
+                    right_hand = SkeletonDrawer._create_placeholder_hand(wrist_pos, is_left=False)
+            
             for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
                 if idx1 < len(right_hand) and idx2 < len(right_hand):
                     pt1 = tuple(map(int, right_hand[idx1][:2]))

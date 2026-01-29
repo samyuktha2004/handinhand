@@ -55,6 +55,13 @@ class EmbeddingGenerator:
         self.embeddings_bsl = {}
         self._ensure_directories()
 
+    def _ensure_directories(self):
+        """Create necessary directories if they don't exist."""
+        Path(EMBEDDINGS_DIR).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(EMBEDDINGS_DIR, 'asl')).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(EMBEDDINGS_DIR, 'bsl')).mkdir(parents=True, exist_ok=True)
+        Path(REGISTRIES_DIR).mkdir(parents=True, exist_ok=True)
+
     def _load_signature(self, sig_file: str) -> Optional[Dict]:
         """Load signature JSON file."""
         try:
@@ -66,12 +73,14 @@ class EmbeddingGenerator:
 
     def _normalize_landmarks(self, landmarks: List[List[float]]) -> np.ndarray:
         """
-        Normalize landmarks to be body-centric (relative to shoulder center).
+        Normalize landmarks to be body-centric and scale-invariant.
         
         Process:
         1. Calculate shoulder center: mean of left (11) and right (12) shoulders
-        2. Subtract center from all landmarks
-        3. Return normalized array
+        2. Subtract center from all landmarks (translation invariance)
+        3. Divide by shoulder width (scale invariance)
+        
+        Result: All bodies normalized to shoulder_width = 1.0
         """
         landmarks = np.array(landmarks, dtype=np.float32)
         
@@ -81,8 +90,13 @@ class EmbeddingGenerator:
             shoulder_right = landmarks[SHOULDER_CENTER_RIGHT]
             shoulder_center = (shoulder_left + shoulder_right) / 2.0
             
-            # Normalize: subtract shoulder center from all points
+            # Step 1: Translation invariance - center on shoulders
             landmarks_normalized = landmarks - shoulder_center
+            
+            # Step 2: Scale invariance - normalize by shoulder width
+            shoulder_width = np.linalg.norm(shoulder_left[:2] - shoulder_right[:2])
+            if shoulder_width > 0.01:  # Avoid division by zero
+                landmarks_normalized = landmarks_normalized / shoulder_width
         else:
             landmarks_normalized = landmarks
         
