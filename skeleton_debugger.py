@@ -184,6 +184,130 @@ class SkeletonDebugger:
             return sig_frames[frame_idx]
         return {}
     
+    def _is_frame_corrupt(self, landmarks: Dict) -> bool:
+        """Check if frame has no valid data (corrupt/empty).
+        
+        Returns True if:
+        - No landmarks at all
+        - Pose is all zeros
+        - No valid body parts have data
+        """
+        if not landmarks:
+            return True
+        
+        pose = landmarks.get('pose')
+        left_hand = landmarks.get('left_hand')
+        right_hand = landmarks.get('right_hand')
+        
+        # Check if pose exists and is not all zeros
+        pose_valid = pose is not None and np.any(pose != 0)
+        
+        # Check if at least one hand has data
+        left_valid = left_hand is not None and np.any(left_hand != 0)
+        right_valid = right_hand is not None and np.any(right_hand != 0)
+        
+        # Frame is corrupt if no valid pose and no valid hands
+        return not pose_valid and not left_valid and not right_valid
+    
+    def _draw_corrupt_warning(self, frame: np.ndarray) -> None:
+        """Draw warning overlay for corrupt/empty frames."""
+        h, w = frame.shape[:2]
+        text = "NO DATA"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1.0
+        thickness = 2
+        
+        # Get text size for centering
+        (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
+        x = (w - text_w) // 2
+        y = (h + text_h) // 2
+        
+        # Draw red warning text
+        cv2.putText(frame, text, (x, y), font, font_scale, (0, 0, 200), thickness)
+    
+    def _analyze_corruption(self, frames: List, sig_name: str) -> Dict:
+        """Analyze all frames for corruption and return detailed report.
+        
+        Returns dict with:
+            - corrupt_frames: list of 0-indexed corrupt frame numbers
+            - corrupt_count: total corrupt frames
+            - total_frames: total frames
+            - corrupt_pct: percentage corrupt
+            - status: 'good', 'warning', 'bad'
+        """
+        corrupt_frames = []
+        for i, frame in enumerate(frames):
+            if self._is_frame_corrupt(frame):
+                corrupt_frames.append(i)
+        
+        total = len(frames)
+        corrupt_count = len(corrupt_frames)
+        corrupt_pct = (corrupt_count / total * 100) if total > 0 else 0
+        
+        # Determine status
+        if corrupt_pct == 0:
+            status = 'good'
+        elif corrupt_pct < 20:
+            status = 'warning'
+        else:
+            status = 'bad'
+        
+        return {
+            'sig_name': sig_name,
+            'corrupt_frames': corrupt_frames,
+            'corrupt_count': corrupt_count,
+            'total_frames': total,
+            'corrupt_pct': corrupt_pct,
+            'status': status
+        }
+    
+    def _print_corruption_report(self) -> None:
+        """Print detailed corruption report for all loaded signatures."""
+        print(f"\n{'='*60}")
+        print("DATA QUALITY REPORT")
+        print(f"{'='*60}")
+        
+        reports = []
+        
+        # Analyze sig1 (use raw frames to avoid placeholder interference)
+        report1 = self._analyze_corruption(self.frames1_raw, self.sig1_path.stem)
+        reports.append(report1)
+        
+        # Analyze sig2 if different from sig1
+        if self.sig2_path != self.sig1_path:
+            report2 = self._analyze_corruption(self.frames2_raw, self.sig2_path.stem)
+            reports.append(report2)
+        
+        quarantine_candidates = []
+        
+        for report in reports:
+            status_icon = {'good': '✅', 'warning': '⚠️', 'bad': '❌'}[report['status']]
+            print(f"\n{status_icon} {report['sig_name']}")
+            print(f"   Total frames: {report['total_frames']}")
+            print(f"   Corrupt frames: {report['corrupt_count']} ({report['corrupt_pct']:.1f}%)")
+            
+            if report['corrupt_frames']:
+                # Show first 10 corrupt frame numbers (1-indexed for display)
+                display_frames = [f+1 for f in report['corrupt_frames'][:10]]
+                if len(report['corrupt_frames']) > 10:
+                    print(f"   Frame numbers: {display_frames} ... (+{len(report['corrupt_frames'])-10} more)")
+                else:
+                    print(f"   Frame numbers: {display_frames}")
+            
+            if report['status'] in ['warning', 'bad']:
+                quarantine_candidates.append(report['sig_name'])
+        
+        # Recommendation
+        if quarantine_candidates:
+            print(f"\n{'─'*60}")
+            print("RECOMMENDED ACTIONS:")
+            for sig in quarantine_candidates:
+                print(f"  → Consider quarantining: {sig}")
+            print(f"\nTo quarantine, run:")
+            print(f"  python skeleton_debugger.py --quarantine <signature_name>")
+        
+        print(f"{'='*60}\n")
+    
     def _draw_frame_info(self, frame: np.ndarray, frame_num: int, total: int, 
                         sig_name: str, lang: str) -> None:
         """Draw metadata on frame.
@@ -302,11 +426,13 @@ class SkeletonDebugger:
         sig_name = self.sig1_path.stem
         total = len(self.frames1)
         
-        if lm:
+        if lm and not self._is_frame_corrupt(lm):
             frame_blank = SkeletonDrawer.draw_skeleton(
                 frame_blank, lm, lang=lang,
                 show_joints=self.show_joints
             )
+        else:
+            self._draw_corrupt_warning(frame_blank)
         
         self._draw_frame_info(frame_blank, self.current_frame, total,
                              sig_name, lang)
@@ -332,19 +458,23 @@ class SkeletonDebugger:
         lm2 = self._get_current_landmarks(self.current_frame, self.frames2)
         
         # Normalize both to standard bounding box (makes them same relative size)
-        if lm1:
+        if lm1 and not self._is_frame_corrupt(lm1):
             lm1_normalized = self._normalize_landmarks_to_bbox(lm1, target_width=0.7)
             frame1_blank = SkeletonDrawer.draw_skeleton(
                 frame1_blank, lm1_normalized, lang=self.lang1,
                 show_joints=self.show_joints
             )
+        elif self.current_frame < len(self.frames1):
+            self._draw_corrupt_warning(frame1_blank)
         
-        if lm2:
+        if lm2 and not self._is_frame_corrupt(lm2):
             lm2_normalized = self._normalize_landmarks_to_bbox(lm2, target_width=0.7)
             frame2_blank = SkeletonDrawer.draw_skeleton(
                 frame2_blank, lm2_normalized, lang=self.lang2,
                 show_joints=self.show_joints
             )
+        elif self.current_frame < len(self.frames2):
+            self._draw_corrupt_warning(frame2_blank)
         
         # Add info (normalized size)
         # Frame info with completion indicator for lang1
@@ -403,11 +533,13 @@ class SkeletonDebugger:
             sig_name = self.sig2_path.stem
             total = len(self.frames2)
         
-        if lm:
+        if lm and not self._is_frame_corrupt(lm):
             frame_blank = SkeletonDrawer.draw_skeleton(
                 frame_blank, lm, lang=lang,
                 show_joints=self.show_joints
             )
+        else:
+            self._draw_corrupt_warning(frame_blank)
         
         self._draw_frame_info(frame_blank, self.current_frame, total,
                              sig_name, lang)
@@ -499,7 +631,339 @@ class SkeletonDebugger:
                     print(f"⏹ Playback complete")
         
         cv2.destroyAllWindows()
-        print("\nDebugger closed.")
+        
+        # Print corruption report on exit
+        self._print_corruption_report()
+
+
+def quarantine_signature(sig_name: str, lang: str) -> bool:
+    """Move a problematic signature to quarantine folder.
+    
+    Args:
+        sig_name: Name of signature (e.g., 'hello_1')
+        lang: Language folder (e.g., 'asl', 'bsl')
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    import shutil
+    
+    assets_dir = Path('assets/signatures')
+    quarantine_dir = Path('assets/signatures/_quarantine')
+    
+    source = assets_dir / lang.lower() / f"{sig_name}.json"
+    dest_dir = quarantine_dir / lang.lower()
+    dest = dest_dir / f"{sig_name}.json"
+    
+    if not source.exists():
+        print(f"❌ Source not found: {source}")
+        return False
+    
+    # Create quarantine directory if needed
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Move the file
+    shutil.move(str(source), str(dest))
+    print(f"✅ Quarantined: {source} → {dest}")
+    print(f"   To restore: mv '{dest}' '{source}'")
+    
+    return True
+
+
+def _extract_motion_trajectory(pose_data: List) -> np.ndarray:
+    """Extract normalized motion trajectory from pose data.
+    
+    Returns an array of shape (n_frames, features) where features are:
+    - Left hand centroid (x, y) relative to shoulder center
+    - Right hand centroid (x, y) relative to shoulder center
+    - Left hand velocity
+    - Right hand velocity
+    """
+    trajectories = []
+    
+    prev_left = None
+    prev_right = None
+    
+    for frame in pose_data:
+        pose = frame.get('pose')
+        lh = frame.get('left_hand')
+        rh = frame.get('right_hand')
+        
+        # Get shoulder center for normalization
+        shoulder_center = np.array([0.5, 0.3])  # Default center
+        if pose is not None:
+            pose = np.array(pose)
+            if pose.shape[0] >= 12:  # Has shoulders
+                left_shoulder = pose[11, :2]
+                right_shoulder = pose[12, :2]
+                if np.any(left_shoulder != 0) and np.any(right_shoulder != 0):
+                    shoulder_center = (left_shoulder + right_shoulder) / 2
+        
+        # Left hand centroid
+        left_centroid = np.array([0.0, 0.0])
+        if lh is not None:
+            lh = np.array(lh)
+            if np.any(lh != 0):
+                left_centroid = lh[:, :2].mean(axis=0) - shoulder_center
+        
+        # Right hand centroid
+        right_centroid = np.array([0.0, 0.0])
+        if rh is not None:
+            rh = np.array(rh)
+            if np.any(rh != 0):
+                right_centroid = rh[:, :2].mean(axis=0) - shoulder_center
+        
+        # Velocity (change from previous frame)
+        left_vel = np.linalg.norm(left_centroid - prev_left) if prev_left is not None else 0
+        right_vel = np.linalg.norm(right_centroid - prev_right) if prev_right is not None else 0
+        
+        prev_left = left_centroid
+        prev_right = right_centroid
+        
+        # Feature vector for this frame
+        features = np.concatenate([
+            left_centroid,   # 2 values
+            right_centroid,  # 2 values
+            [left_vel],      # 1 value
+            [right_vel]      # 1 value
+        ])
+        trajectories.append(features)
+    
+    return np.array(trajectories)
+
+
+def _dtw_distance(seq1: np.ndarray, seq2: np.ndarray) -> float:
+    """Compute Dynamic Time Warping distance between two sequences.
+    
+    DTW handles different-length sequences by finding optimal alignment.
+    """
+    n, m = len(seq1), len(seq2)
+    
+    # Cost matrix
+    dtw = np.full((n + 1, m + 1), np.inf)
+    dtw[0, 0] = 0
+    
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = np.linalg.norm(seq1[i-1] - seq2[j-1])
+            dtw[i, j] = cost + min(dtw[i-1, j], dtw[i, j-1], dtw[i-1, j-1])
+    
+    # Normalize by path length
+    return dtw[n, m] / (n + m)
+
+
+def _compute_position_stats(pose_data: List) -> Dict:
+    """Compute statistical summary of hand positions throughout the sign.
+    
+    Returns dict with:
+    - mean_left: average left hand position
+    - mean_right: average right hand position  
+    - range_left: (min, max) bounding box of left hand
+    - range_right: (min, max) bounding box of right hand
+    - dominant_hand: 'left', 'right', or 'both'
+    """
+    left_positions = []
+    right_positions = []
+    
+    for frame in pose_data:
+        lh = frame.get('left_hand')
+        rh = frame.get('right_hand')
+        
+        if lh is not None:
+            lh = np.array(lh)
+            if np.any(lh != 0):
+                left_positions.append(lh[:, :2].mean(axis=0))
+        
+        if rh is not None:
+            rh = np.array(rh)
+            if np.any(rh != 0):
+                right_positions.append(rh[:, :2].mean(axis=0))
+    
+    left_positions = np.array(left_positions) if left_positions else np.array([[0, 0]])
+    right_positions = np.array(right_positions) if right_positions else np.array([[0, 0]])
+    
+    left_activity = len(left_positions)
+    right_activity = len(right_positions)
+    
+    # Determine dominant hand
+    if left_activity > right_activity * 1.5:
+        dominant = 'left'
+    elif right_activity > left_activity * 1.5:
+        dominant = 'right'
+    else:
+        dominant = 'both'
+    
+    return {
+        'mean_left': left_positions.mean(axis=0),
+        'mean_right': right_positions.mean(axis=0),
+        'std_left': left_positions.std(axis=0),
+        'std_right': right_positions.std(axis=0),
+        'range_left': (left_positions.min(axis=0), left_positions.max(axis=0)),
+        'range_right': (right_positions.min(axis=0), right_positions.max(axis=0)),
+        'dominant_hand': dominant,
+        'left_activity': left_activity,
+        'right_activity': right_activity
+    }
+
+
+def audit_word_variants(word: str, lang: str) -> None:
+    """Audit all variants of a word for consistency using coordinate analysis.
+    
+    Detects outliers using:
+    1. DTW distance between motion trajectories
+    2. Statistical position analysis (mean, range, dominant hand)
+    3. Velocity profile comparison
+    """
+    import glob
+    
+    assets_dir = Path('assets/signatures')
+    pattern = str(assets_dir / lang.lower() / f"{word}_*.json")
+    
+    # Also check for base name without suffix
+    base_file = assets_dir / lang.lower() / f"{word}.json"
+    
+    variants = sorted(glob.glob(pattern))
+    if base_file.exists():
+        variants.insert(0, str(base_file))
+    
+    # Filter to only base variants (not smoothed/mirrored/variation)
+    base_variants = [v for v in variants if not any(x in Path(v).stem for x in ['smoothed', 'mirrored', 'variation'])]
+    
+    if len(base_variants) < 2:
+        print(f"⚠️  Only {len(base_variants)} base variant(s) found for '{word}' in {lang}.")
+        print(f"   Need at least 2 variants to compare.")
+        return
+    
+    print(f"\n{'='*60}")
+    print(f"WORD VARIANT AUDIT: '{word}' ({lang.upper()})")
+    print(f"{'='*60}")
+    print(f"Found {len(base_variants)} base variant(s)")
+    
+    # Load all variants
+    trajectories = []
+    stats_list = []
+    valid_variants = []
+    
+    for v in base_variants:
+        try:
+            with open(v, 'r') as f:
+                data = json.load(f)
+            
+            pose_data = data.get('pose_data', [])
+            if not pose_data:
+                print(f"   ⚠️  {Path(v).stem}: No pose data")
+                continue
+            
+            traj = _extract_motion_trajectory(pose_data)
+            stats = _compute_position_stats(pose_data)
+            
+            trajectories.append(traj)
+            stats_list.append(stats)
+            valid_variants.append(v)
+            
+        except Exception as e:
+            print(f"   ❌ {Path(v).stem}: Error loading - {e}")
+    
+    if len(trajectories) < 2:
+        print("   Not enough valid variants to compare.")
+        return
+    
+    # Compute pairwise DTW distances
+    n = len(trajectories)
+    dtw_matrix = np.zeros((n, n))
+    
+    for i in range(n):
+        for j in range(i+1, n):
+            dist = _dtw_distance(trajectories[i], trajectories[j])
+            dtw_matrix[i, j] = dist
+            dtw_matrix[j, i] = dist
+    
+    # Compute average DTW distance to all others
+    avg_dtw = dtw_matrix.sum(axis=1) / (n - 1)
+    
+    # Also check for dominant hand consistency
+    dominant_hands = [s['dominant_hand'] for s in stats_list]
+    dominant_mode = max(set(dominant_hands), key=dominant_hands.count)
+    
+    # Check position consistency
+    all_mean_left = np.array([s['mean_left'] for s in stats_list])
+    all_mean_right = np.array([s['mean_right'] for s in stats_list])
+    
+    # Outlier detection
+    median_dtw = np.median(avg_dtw)
+    std_dtw = np.std(avg_dtw)
+    
+    print(f"\n📊 Position & Motion Analysis:")
+    print(f"{'─'*60}")
+    
+    outliers = []
+    issues = []
+    
+    for i, (v, dtw, stats) in enumerate(zip(valid_variants, avg_dtw, stats_list)):
+        name = Path(v).stem
+        status_parts = []
+        is_outlier = False
+        
+        # Check DTW distance (motion pattern)
+        dtw_zscore = (dtw - median_dtw) / std_dtw if std_dtw > 0 else 0
+        if dtw_zscore > 2.0:
+            status_parts.append(f"motion: VERY DIFFERENT (z={dtw_zscore:.1f})")
+            is_outlier = True
+        elif dtw_zscore > 1.5:
+            status_parts.append(f"motion: different (z={dtw_zscore:.1f})")
+        
+        # Check dominant hand consistency
+        if stats['dominant_hand'] != dominant_mode:
+            status_parts.append(f"hand: uses {stats['dominant_hand']} (others use {dominant_mode})")
+            is_outlier = True
+        
+        # Check position outlier (using mean position)
+        left_dist = np.linalg.norm(stats['mean_left'] - all_mean_left.mean(axis=0))
+        right_dist = np.linalg.norm(stats['mean_right'] - all_mean_right.mean(axis=0))
+        left_std = np.linalg.norm(all_mean_left.std(axis=0))
+        right_std = np.linalg.norm(all_mean_right.std(axis=0))
+        
+        if left_std > 0 and left_dist / left_std > 2.0:
+            status_parts.append(f"left hand position: outlier")
+        if right_std > 0 and right_dist / right_std > 2.0:
+            status_parts.append(f"right hand position: outlier")
+        
+        # Format output
+        if is_outlier:
+            status = "❌ OUTLIER"
+            outliers.append(name)
+            issues.append((name, status_parts))
+        elif status_parts:
+            status = "⚠️  WARNING"
+            issues.append((name, status_parts))
+        else:
+            status = "✅ OK"
+        
+        print(f"\n   {status} {name}")
+        print(f"      DTW distance: {dtw:.4f} (z-score: {dtw_zscore:+.2f})")
+        print(f"      Dominant hand: {stats['dominant_hand']}")
+        print(f"      Left hand range: x=[{stats['range_left'][0][0]:.2f}, {stats['range_left'][1][0]:.2f}]")
+        print(f"      Right hand range: x=[{stats['range_right'][0][0]:.2f}, {stats['range_right'][1][0]:.2f}]")
+        if status_parts:
+            for issue in status_parts:
+                print(f"      ⚠️  {issue}")
+    
+    # Summary
+    print(f"\n{'─'*60}")
+    if outliers:
+        print("DETECTED ISSUES:")
+        for name, issue_list in issues:
+            print(f"\n   ❌ {name}:")
+            for issue in issue_list:
+                print(f"      - {issue}")
+        
+        print(f"\nRECOMMENDED ACTIONS:")
+        for sig in outliers:
+            print(f"   python skeleton_debugger.py --quarantine {sig} --lang1 {lang}")
+    else:
+        print("✅ All variants appear consistent based on coordinate analysis.")
+    
+    print(f"{'='*60}\n")
 
 
 def main():
@@ -511,6 +975,8 @@ Examples:
   python3 skeleton_debugger.py
   python3 skeleton_debugger.py --lang1 asl --sig1 hello_0 --lang2 bsl --sig2 hello
   python3 skeleton_debugger.py --mode toggled
+  python3 skeleton_debugger.py --quarantine hello_1 --lang1 asl
+  python3 skeleton_debugger.py --audit hello --lang1 asl
         """
     )
     
@@ -526,8 +992,22 @@ Examples:
                        help='Display side-by-side (WARNING: high CPU). Default: single-screen.')
     parser.add_argument('--fps', type=int, default=15,
                        help='Playback FPS (default: 15)')
+    parser.add_argument('--quarantine', metavar='SIG_NAME',
+                       help='Move a problematic signature to quarantine folder')
+    parser.add_argument('--audit', metavar='WORD',
+                       help='Audit all variants of a word for consistency (e.g., --audit hello)')
     
     args = parser.parse_args()
+    
+    # Handle audit command
+    if args.audit:
+        audit_word_variants(args.audit, args.lang1)
+        return
+    
+    # Handle quarantine command
+    if args.quarantine:
+        quarantine_signature(args.quarantine, args.lang1)
+        return
     
     # Build paths
     assets_dir = Path('assets/signatures')
