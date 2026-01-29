@@ -75,6 +75,10 @@ class SkeletonDebugger:
         self.sig1_dict = self._load_signature(sig1_path)
         self.sig2_dict = self._load_signature(sig2_path)
         
+        # Check data quality and warn if issues
+        self.quality1 = self._assess_data_quality(self.sig1_dict, sig1_path)
+        self.quality2 = self._assess_data_quality(self.sig2_dict, sig2_path)
+        
         # Extract landmark frames - BOTH normalized and raw versions
         # Normalized: scaled to reference body (100px shoulders, centered)
         # Raw: original pixel coordinates from signature
@@ -103,6 +107,62 @@ class SkeletonDebugger:
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
         self.height = self.sig1_dict.get('metadata', {}).get('frame_height', 480)
+    
+    def _assess_data_quality(self, sig_dict: Dict, path: str) -> Dict:
+        """
+        Assess data quality of a signature and warn if issues detected.
+        
+        Returns dict with:
+            - pose_pct: % frames with valid pose
+            - hand_pct: % frames with at least one valid hand
+            - status: 'good', 'warning', or 'corrupt'
+        """
+        pose_data = sig_dict.get('pose_data', [])
+        if not pose_data:
+            return {'pose_pct': 0, 'hand_pct': 0, 'status': 'corrupt'}
+        
+        good_pose = 0
+        good_hand = 0
+        
+        for frame in pose_data:
+            pose = frame.get('pose', [])
+            left = frame.get('left_hand', [])
+            right = frame.get('right_hand', [])
+            
+            # Check pose validity
+            if pose and np.abs(np.array(pose)[:,:2]).max() > 0.01:
+                good_pose += 1
+            
+            # Check hand validity (at least one)
+            left_valid = left and np.abs(np.array(left)[:,:2]).max() > 0.01
+            right_valid = right and np.abs(np.array(right)[:,:2]).max() > 0.01
+            if left_valid or right_valid:
+                good_hand += 1
+        
+        total = len(pose_data)
+        pose_pct = 100 * good_pose // total
+        hand_pct = 100 * good_hand // total
+        
+        # Determine status
+        if pose_pct == 100 and hand_pct >= 50:
+            status = 'good'
+        elif pose_pct >= 80:
+            status = 'warning'
+        else:
+            status = 'corrupt'
+        
+        # Print warning if not good
+        sig_name = Path(path).stem
+        if status == 'warning':
+            print(f"⚠️  WARNING: {sig_name} has quality issues:")
+            print(f"    Pose: {pose_pct}%, Hands: {hand_pct}%")
+            print(f"    Some frames may display incorrectly.")
+        elif status == 'corrupt':
+            print(f"❌ CORRUPT: {sig_name} has severe data issues:")
+            print(f"    Pose: {pose_pct}%, Hands: {hand_pct}%")
+            print(f"    Consider re-extracting this signature.")
+        
+        return {'pose_pct': pose_pct, 'hand_pct': hand_pct, 'status': status}
     
     def _load_signature(self, path: str) -> Dict:
         """Load signature JSON file."""

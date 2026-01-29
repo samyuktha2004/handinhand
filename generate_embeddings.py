@@ -45,6 +45,11 @@ EMBEDDING_DIM = 512
 class EmbeddingGenerator:
     """Generate normalized embeddings from landmark sequences."""
 
+    # Quality thresholds
+    MIN_POSE_QUALITY = 80      # Minimum % of valid pose frames to include signature
+    MIN_HAND_QUALITY = 20      # Minimum % of valid hand frames 
+    OUTLIER_THRESHOLD = 3.0    # Z-score threshold for outlier detection
+
     def __init__(self):
         """Initialize generator."""
         self.loader = RegistryLoader()
@@ -70,6 +75,101 @@ class EmbeddingGenerator:
         except Exception as e:
             print(f"      ⚠️  Error loading {sig_file}: {str(e)[:50]}")
             return None
+
+    def _assess_signature_quality(self, signature: Dict) -> Tuple[int, int, bool]:
+        """
+        Assess quality of a signature.
+        
+        Returns:
+            (pose_pct, hand_pct, is_usable)
+        """
+        frames = signature.get('pose_data', [])
+        if not frames:
+            return 0, 0, False
+        
+        good_pose = 0
+        good_hand = 0
+        
+        for frame in frames:
+            pose = frame.get('pose', [])
+            left = frame.get('left_hand', [])
+            right = frame.get('right_hand', [])
+            
+            # Check pose validity (not zeros)
+            if pose and np.abs(np.array(pose)[:,:2]).max() > 0.01:
+                good_pose += 1
+            
+            # Check hand validity
+            left_valid = left and np.abs(np.array(left)[:,:2]).max() > 0.01
+            right_valid = right and np.abs(np.array(right)[:,:2]).max() > 0.01
+            if left_valid or right_valid:
+                good_hand += 1
+        
+        total = len(frames)
+        pose_pct = 100 * good_pose // total if total > 0 else 0
+        hand_pct = 100 * good_hand // total if total > 0 else 0
+        
+        is_usable = pose_pct >= self.MIN_POSE_QUALITY and hand_pct >= self.MIN_HAND_QUALITY
+        return pose_pct, hand_pct, is_usable
+
+    def _is_frame_valid(self, frame: Dict) -> bool:
+        """
+        Check if a single frame has valid data (not corrupted).
+        
+        A frame is valid if:
+        - Pose exists and is not zeros
+        - At least one hand has non-zero data
+        """
+        pose = frame.get('pose', [])
+        left = frame.get('left_hand', [])
+        right = frame.get('right_hand', [])
+        
+        # Pose must be valid
+        if not pose or np.abs(np.array(pose)[:,:2]).max() < 0.01:
+            return False
+        
+        # At least one hand should have data (or be placeholder-able)
+        # For embedding, we allow frames without hands as pose alone is informative
+        return True
+
+    def _remove_outlier_frames(self, frame_embeddings: List[np.ndarray]) -> List[np.ndarray]:
+        """
+        Remove outlier frames using Z-score method.
+        
+        Frames that deviate too much from the median are likely:
+        - Corrupted data
+        - Remnants of another sign
+        - Tracking failures
+        
+        Returns:
+            List of embeddings with outliers removed
+        """
+        if len(frame_embeddings) < 5:
+            return frame_embeddings  # Too few frames to detect outliers
+        
+        embeddings = np.array(frame_embeddings)
+        
+        # Calculate median and MAD (Median Absolute Deviation)
+        median = np.median(embeddings, axis=0)
+        distances = np.linalg.norm(embeddings - median, axis=1)
+        
+        # MAD-based outlier detection (more robust than std)
+        mad = np.median(np.abs(distances - np.median(distances)))
+        if mad < 1e-6:
+            return frame_embeddings  # All frames very similar
+        
+        # Modified Z-score
+        modified_z = 0.6745 * (distances - np.median(distances)) / mad
+        
+        # Keep frames within threshold
+        filtered = [emb for emb, z in zip(frame_embeddings, modified_z) 
+                   if abs(z) < self.OUTLIER_THRESHOLD]
+        
+        n_removed = len(frame_embeddings) - len(filtered)
+        if n_removed > 0:
+            print(f"         Removed {n_removed} outlier frame(s)")
+        
+        return filtered if filtered else frame_embeddings  # Don't return empty
 
     def _normalize_landmarks(self, landmarks: List[List[float]]) -> np.ndarray:
         """
@@ -132,27 +232,58 @@ class EmbeddingGenerator:
         """
         Compute embedding for a single signature (avg across all frames).
         
+        Quality gates applied:
+        1. Signature-level: Skip if below MIN_POSE_QUALITY or MIN_HAND_QUALITY
+        2. Frame-level: Skip frames with corrupt/zero data
+        3. Outlier detection: Remove frames that deviate too much from median
+        
         Process:
         1. Load signature JSON
-        2. For each frame: convert to embedding via Global Average Pooling
-        3. Average embeddings across all frames
-        4. Return averaged embedding (512-dim after padding/pooling)
+        2. Check overall quality
+        3. For each valid frame: convert to embedding
+        4. Remove outlier frames
+        5. Average embeddings across remaining frames
+        6. Return averaged embedding (512-dim after padding/pooling)
         """
         signature = self._load_signature(sig_file)
         if not signature or 'pose_data' not in signature:
+            return None
+        
+        # Quality gate 1: Check overall signature quality
+        pose_pct, hand_pct, is_usable = self._assess_signature_quality(signature)
+        sig_name = Path(sig_file).stem
+        
+        if not is_usable:
+            print(f"      ⚠️  Skipping {sig_name}: quality below threshold")
+            print(f"         (Pose: {pose_pct}%, Hands: {hand_pct}%)")
             return None
         
         frames = signature['pose_data']
         if not frames:
             return None
         
-        # Compute embedding for each frame
+        # Quality gate 2: Compute embedding only for valid frames
         frame_embeddings = []
+        skipped_frames = 0
+        
         for frame in frames:
+            if not self._is_frame_valid(frame):
+                skipped_frames += 1
+                continue
             frame_embedding = self._frame_to_embedding(frame)
             frame_embeddings.append(frame_embedding)
         
-        # Global Average Pooling: average embeddings across all frames
+        if skipped_frames > 0:
+            print(f"         Skipped {skipped_frames} invalid frame(s)")
+        
+        if not frame_embeddings:
+            print(f"      ⚠️  No valid frames in {sig_name}")
+            return None
+        
+        # Quality gate 3: Remove outlier frames
+        frame_embeddings = self._remove_outlier_frames(frame_embeddings)
+        
+        # Global Average Pooling: average embeddings across all valid frames
         avg_embedding = np.mean(frame_embeddings, axis=0)
         
         # Pad/reshape to EMBEDDING_DIM if needed
@@ -172,23 +303,64 @@ class EmbeddingGenerator:
         """
         Compute aggregated embedding across multiple instances.
         
+        Quality gate: Similarity threshold
+        - If multiple signatures exist, check they're similar enough
+        - Dissimilar signatures might be mislabeled or from wrong sign
+        
         Process:
         1. For each signature file: compute individual embedding
-        2. Average embeddings across all instances
-        3. Return aggregated embedding (robust across signers/contexts)
+        2. Check cross-signature similarity (cosine similarity)
+        3. Remove signatures that are too dissimilar from majority
+        4. Average remaining embeddings
+        5. Return aggregated embedding (robust across signers/contexts)
         """
         embeddings = []
+        sig_names = []
         
         for sig_file in sig_files:
             embedding = self._compute_signature_embedding(sig_file)
             if embedding is not None:
                 embeddings.append(embedding)
+                sig_names.append(Path(sig_file).stem)
         
         if not embeddings:
             return None
         
-        # Average embeddings across all instances
-        aggregated = np.mean(embeddings, axis=0)
+        # If only one signature, return it directly
+        if len(embeddings) == 1:
+            return embeddings[0]
+        
+        # Quality gate: Cross-signature similarity check
+        # Compute pairwise cosine similarities
+        embeddings_arr = np.array(embeddings)
+        
+        # Normalize for cosine similarity
+        norms = np.linalg.norm(embeddings_arr, axis=1, keepdims=True)
+        norms[norms < 1e-8] = 1  # Avoid div by zero
+        normalized = embeddings_arr / norms
+        
+        # Compute mean embedding and similarities to mean
+        mean_normalized = np.mean(normalized, axis=0)
+        mean_normalized = mean_normalized / (np.linalg.norm(mean_normalized) + 1e-8)
+        
+        similarities = np.dot(normalized, mean_normalized)
+        
+        # Threshold: signatures with similarity < 0.5 to mean are suspicious
+        SIMILARITY_THRESHOLD = 0.5
+        
+        valid_embeddings = []
+        for i, (emb, sim, name) in enumerate(zip(embeddings, similarities, sig_names)):
+            if sim >= SIMILARITY_THRESHOLD:
+                valid_embeddings.append(emb)
+            else:
+                print(f"      ⚠️  Excluding {name}: low similarity ({sim:.3f}) to mean")
+        
+        if not valid_embeddings:
+            print("      ⚠️  All signatures excluded, using original set")
+            valid_embeddings = embeddings
+        
+        # Average embeddings across all valid instances
+        aggregated = np.mean(valid_embeddings, axis=0)
         return aggregated.astype(np.float32)
 
     def generate_embeddings(self):
