@@ -34,6 +34,24 @@ The semantic information IS the skeleton. If landmarks move correctly, any rigge
    - Landmark → bone rotation retargeting
    - Multiple avatar support ("skins")
 
+---
+
+## Policy: Insights Only, Not Code
+
+All external research, references, and inspirations must be used for insights, patterns, and design ideas only. No code, data, or assets may be copied or adapted from sources with non-permissive licenses (e.g., CC BY-NC-SA, academic, or proprietary). All external references must be:
+- Clearly attributed with license and source.
+- Accompanied by a critical assessment: why their approach was chosen, and whether it is better or worse than our current or planned implementation.
+- Documented with a "Why not their way?" section for each major external insight, explaining why we do or do not adopt their approach.
+
+## Why Not Their Way? Assessments
+
+- **Sign-MT**: Uses fixed neck offset and simplified skeleton for clarity. We use a dynamic neck connection for anatomical accuracy and robustness to pose variation. Sign-MT's approach is simpler but less accurate for our needs.
+- **MediaPipe Holistic**: Draws lines only if both endpoints are visible, uses visibility threshold, overlays points after lines, and adds white borders for clarity. We adopt these best practices for robustness and visual clarity.
+- **pose-format**: MIT-licensed, provides normalization and visualization patterns. We use their normalization and drawing order insights, but not their code.
+- **signwriting, sign/translate**: MIT/CC BY-NC-SA. We use only high-level design ideas, not code or data, due to license restrictions.
+
+All future research must follow this policy and include a "Why not their way?" assessment for each major external reference.
+
 ### Risk Mitigations
 
 | Risk                   | Mitigation                                       |
@@ -102,6 +120,7 @@ The semantic information IS the skeleton. If landmarks move correctly, any rigge
 ### Neck Solution: Dynamic Landmark Connection
 
 **Problem:** Current skeleton_drawer.py uses fixed offsets:
+
 ```python
 NECK_LENGTH = 35  # Fixed!
 HEAD_HEIGHT = 70  # Fixed!
@@ -109,6 +128,7 @@ head_center_y = shoulder_center[1] - NECK_LENGTH - HEAD_HEIGHT // 2
 ```
 
 **Solution:** Draw line directly from shoulder midpoint to actual face landmark:
+
 ```python
 # Fallback chain for face anchor point
 FACE_ANCHOR_FALLBACKS = [1, 168, 0, 152]  # nose_tip, glabella, upper_lip, chin
@@ -124,6 +144,7 @@ cv2.line(frame, shoulder_midpoint, face_anchor, color, thickness)
 ```
 
 **Advantages:**
+
 - No fixed dimensions - length adapts to head position
 - Natural perspective/foreshortening handled automatically
 - Simpler code, fewer magic numbers
@@ -137,17 +158,18 @@ cv2.line(frame, shoulder_midpoint, face_anchor, color, thickness)
 
 ### Key Patterns to Adopt
 
-| Pattern | How MediaPipe Does It | Apply To |
-|---------|----------------------|----------|
-| **Visibility check** | `_VISIBILITY_THRESHOLD = 0.5`, skip if below | ✅ Already in recognition_base.py |
-| **Both endpoints** | Only draw connection if both landmarks in `idx_to_coordinates` | skeleton_drawer.py |
-| **Points after lines** | Draw joints AFTER skeleton for visual overlay | skeleton_drawer.py |
-| **White border** | Draw larger white circle, then colored fill | skeleton_drawer.py |
-| **DrawingSpec** | Dataclass for color/thickness/radius per landmark | Optional enhancement |
+| Pattern                | How MediaPipe Does It                                          | Apply To                          |
+| ---------------------- | -------------------------------------------------------------- | --------------------------------- |
+| **Visibility check**   | `_VISIBILITY_THRESHOLD = 0.5`, skip if below                   | ✅ Already in recognition_base.py |
+| **Both endpoints**     | Only draw connection if both landmarks in `idx_to_coordinates` | skeleton_drawer.py                |
+| **Points after lines** | Draw joints AFTER skeleton for visual overlay                  | skeleton_drawer.py                |
+| **White border**       | Draw larger white circle, then colored fill                    | skeleton_drawer.py                |
+| **DrawingSpec**        | Dataclass for color/thickness/radius per landmark              | Optional enhancement              |
 
 ### Face Landmark Reference
 
 Key indices for neck connection fallbacks:
+
 - **1** - Nose tip (center of face, most stable)
 - **168** - Glabella (between eyes, rarely occluded)
 - **0** - Upper lip center (visible when looking down)
@@ -169,7 +191,42 @@ from mediapipe.python.solutions.face_mesh_connections import (
 
 ---
 
-## 🔧 Jan 30, 2026 - Landmark Quality Filtering
+##  pose-format Library Insights (MIT License)
+
+**Source:** [sign-language-processing/pose](https://github.com/sign-language-processing/pose)
+
+### Key Features We Can Use
+
+| Feature                    | What It Does                                         | Useful For                           |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------ |
+| **Shoulder normalization** | `pose.normalize()` auto-selects shoulder points      | ✅ Already doing this                |
+| **Masked tensors**         | `MaskedTensor` handles missing landmarks cleanly     | Inspiration for our masked averaging |
+| **Augmentation**           | `pose.augment2d(rotation_std, shear_std, scale_std)` | Future: data augmentation            |
+| **FPS interpolation**      | `pose.interpolate_fps(24, kind='cubic')`             | Future: temporal smoothing           |
+| **PoseVisualizer**         | Draws skeleton + saves video/GIF                     | Reference for our skeleton_drawer    |
+
+### Normalization Pattern (MIT - can adapt)
+
+```python
+# Their approach: normalize based on shoulder width
+pose.normalize(p.header.normalization_info(
+    p1=("pose_keypoints_2d", "RShoulder"),
+    p2=("pose_keypoints_2d", "LShoulder")
+))
+# If not specified, auto-selects shoulder points
+pose.normalize()  # Same result
+```
+
+### Visualization CLI (useful pattern)
+
+```bash
+# They provide CLI for visualization
+visualize_pose -i example.pose -o example.mp4 --normalize
+```
+
+---
+
+## �🔧 Jan 30, 2026 - Landmark Quality Filtering
 
 ### Overview
 

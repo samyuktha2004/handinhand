@@ -4,19 +4,27 @@
 
 ---
 
+## Reference Sources & Licensing
+
+| Source                 | License         | Can Use Code?             | Can Use Insights?   | Status      |
+| ---------------------- | --------------- | ------------------------- | ------------------- | ----------- |
+| **MediaPipe** (Google) | Apache 2.0      | ✅ Yes (with attribution) | ✅ Yes              | ✅ Reviewed |
+| **pose-format**        | MIT             | ✅ Yes (with attribution) | ✅ Yes              | ✅ Reviewed |
+| **signwriting**        | MIT             | ✅ Yes (with attribution) | ✅ Yes              | ⬜ Future   |
+| **sign/translate**     | CC BY-NC-SA 4.0 | ⚠️ Non-commercial only    | ✅ Insights only    | ✅ Reviewed |
+| **RWTH-PHOENIX**       | Academic        | ⬜ Check license          | ✅ Yes (cite paper) | ⬜ Future   |
+| **ASL-LEX**            | Academic        | ⬜ Check license          | ✅ Yes              | ⬜ Future   |
+
+### Future Research TODOs
+
+
+
 ## Development Strategy: Skeleton-First
 
 **Principle:** Perfect the skeleton visualizer before adding avatars. The avatar is just "skin on skeleton."
-
-### Why Skeleton-First
-
 - ✅ Recognition logic 100% independent of rendering
 - ✅ Faster iteration (no VRM/3D complexity)
 - ✅ Easier debugging (see exactly which landmarks are wrong)
-- ✅ Lighter runtime (no Three.js, works on low-end devices)
-- ✅ Avatar becomes swappable skin layer
-
-### Risk Mitigations
 
 | Risk                                 | Mitigation                                                  |
 | ------------------------------------ | ----------------------------------------------------------- |
@@ -186,12 +194,12 @@ Phase 3: Avatar = "apply skin"
 
 ### MediaPipe Best Practices to Implement
 
-| Pattern | Description | Status |
-|---------|-------------|--------|
-| Visibility threshold | Skip landmarks with visibility < 0.5 | ✅ In recognition_base.py |
-| Both endpoints check | Only draw connection if both endpoints valid | ⬜ TODO |
-| Points after lines | Draw joints after skeleton lines | ⬜ TODO |
-| DrawingSpec pattern | Per-landmark color/thickness customization | ⬜ TODO |
+| Pattern              | Description                                  | Status                    |
+| -------------------- | -------------------------------------------- | ------------------------- |
+| Visibility threshold | Skip landmarks with visibility < 0.5         | ✅ In recognition_base.py |
+| Both endpoints check | Only draw connection if both endpoints valid | ⬜ TODO                   |
+| Points after lines   | Draw joints after skeleton lines             | ⬜ TODO                   |
+| DrawingSpec pattern  | Per-landmark color/thickness customization   | ⬜ TODO                   |
 
 ### Design Tradeoffs: Our Choices vs Sign-MT
 
