@@ -85,7 +85,7 @@ The semantic information IS the skeleton. If landmarks move correctly, any rigge
 
 1. **Neck jitter** - Our neck interpolates shoulder-midpoint → nose. During fast head movements, may "stretch" or "compress" unnaturally.
    - _Test:_ Fast head turns while signing
-   - _Mitigation:_ Add smoothing to neck length, or clamp max stretch
+   - _Mitigation:_ **SOLUTION** - Use dynamic landmark connection (line from shoulder_midpoint to actual face landmark, not fixed offset)
 
 2. **Face-pose misalignment** - MediaPipe face mesh and pose are separate models. Connected neck EXPOSES misalignment that floating face HIDES.
    - _Test:_ Profile views, turning head
@@ -98,6 +98,74 @@ The semantic information IS the skeleton. If landmarks move correctly, any rigge
 4. **Landmark confidence during fast motion** - Their smooth shapes may hide per-frame jitter we expose with dots.
    - _Test:_ Fast fingerspelling sequences
    - _Mitigation:_ Add temporal smoothing (Phase 3 motion validation)
+
+### Neck Solution: Dynamic Landmark Connection
+
+**Problem:** Current skeleton_drawer.py uses fixed offsets:
+```python
+NECK_LENGTH = 35  # Fixed!
+HEAD_HEIGHT = 70  # Fixed!
+head_center_y = shoulder_center[1] - NECK_LENGTH - HEAD_HEIGHT // 2
+```
+
+**Solution:** Draw line directly from shoulder midpoint to actual face landmark:
+```python
+# Fallback chain for face anchor point
+FACE_ANCHOR_FALLBACKS = [1, 168, 0, 152]  # nose_tip, glabella, upper_lip, chin
+
+def get_face_anchor(face_landmarks):
+    for idx in FACE_ANCHOR_FALLBACKS:
+        if idx < len(face_landmarks) and is_valid(face_landmarks[idx]):
+            return face_landmarks[idx]
+    return None
+
+# Draw neck as simple line (length adapts naturally)
+cv2.line(frame, shoulder_midpoint, face_anchor, color, thickness)
+```
+
+**Advantages:**
+- No fixed dimensions - length adapts to head position
+- Natural perspective/foreshortening handled automatically
+- Simpler code, fewer magic numbers
+- If face lost, neck disappears (correct behavior)
+
+---
+
+## 📖 MediaPipe drawing_utils Best Practices
+
+**Source:** [mediapipe/python/solutions/drawing_utils.py](https://github.com/google/mediapipe)
+
+### Key Patterns to Adopt
+
+| Pattern | How MediaPipe Does It | Apply To |
+|---------|----------------------|----------|
+| **Visibility check** | `_VISIBILITY_THRESHOLD = 0.5`, skip if below | ✅ Already in recognition_base.py |
+| **Both endpoints** | Only draw connection if both landmarks in `idx_to_coordinates` | skeleton_drawer.py |
+| **Points after lines** | Draw joints AFTER skeleton for visual overlay | skeleton_drawer.py |
+| **White border** | Draw larger white circle, then colored fill | skeleton_drawer.py |
+| **DrawingSpec** | Dataclass for color/thickness/radius per landmark | Optional enhancement |
+
+### Face Landmark Reference
+
+Key indices for neck connection fallbacks:
+- **1** - Nose tip (center of face, most stable)
+- **168** - Glabella (between eyes, rarely occluded)
+- **0** - Upper lip center (visible when looking down)
+- **152** - Chin (face oval bottom)
+
+### Connection Sets Available
+
+```python
+from mediapipe.python.solutions.face_mesh_connections import (
+    FACEMESH_LIPS,        # Lip contour
+    FACEMESH_LEFT_EYE,    # Left eye outline
+    FACEMESH_RIGHT_EYE,   # Right eye outline
+    FACEMESH_LEFT_EYEBROW,  # Eyebrow lines
+    FACEMESH_RIGHT_EYEBROW,
+    FACEMESH_FACE_OVAL,   # Face outline
+    FACEMESH_NOSE,        # Nose contour
+)
+```
 
 ---
 

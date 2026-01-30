@@ -141,37 +141,57 @@ Phase 3: Avatar = "apply skin"
 
 ## Skeleton Visualizer Improvements 🔄 TODO
 
-**Learnings from Sign-MT Reference:**
+**Learnings from Sign-MT + MediaPipe drawing_utils:**
 
-### Face Rendering
+### Critical Fixes (Priority 1)
+
+- [ ] **Dynamic neck connection** - Connect shoulder_midpoint → actual face landmark (not fixed offset)
+  - Current: Uses `NECK_LENGTH = 35px` fixed offset
+  - Fix: Draw line directly to detected face landmark
+  - Fallback chain: nose_tip(1) → glabella(168) → upper_lip(0) → chin(152)
+- [ ] Shoulder→elbow→wrist arm lines (currently not rendering correctly)
+- [ ] Both-endpoints-valid check before drawing any connection (MediaPipe pattern)
+
+### Face Rendering (Priority 2)
 
 - [ ] Draw face as shapes not dots (eyes with lids, eyebrows, lips contour)
 - [ ] Nose outline (subtle, non-distracting)
 - [ ] Eyebrow position/shape for non-manual markers
+- [ ] Use FACEMESH_LIPS, FACEMESH_LEFT_EYE, etc. connection sets from MediaPipe
 
-### Hand Rendering
+### Hand Rendering (Priority 2)
 
-- [ ] Color-code each finger (5 distinct colors)
+- [ ] Color-code each finger (thumb=red, index=orange, middle=green, ring=blue, pinky=purple)
 - [ ] Draw palm→fingertip connecting lines for all 5 fingers
-- [ ] Left hand / right hand color distinction
+- [ ] Left hand / right hand base color distinction
 
-### Body Rendering
+### Body Rendering (Priority 3)
 
-- [ ] Trapezoid torso (simple, effective)
-- [ ] Shoulder→elbow→wrist lines (currently missing!)
+- [ ] Trapezoid torso option (simple, effective)
 - [ ] Keep neck connection (we have it, they skip it—see tradeoffs below)
 
-### Rendering Quality
+### Rendering Quality (Priority 3)
 
-- [ ] Anti-aliased lines (smooth, not jagged)
+- [ ] Anti-aliased lines: `cv2.LINE_AA` flag for smooth rendering
+- [ ] Draw points AFTER lines (MediaPipe pattern - "aesthetically better")
+- [ ] White border on joint dots: Draw larger white circle first, then colored fill
 - [ ] Larger joint dots during debug mode
-- [ ] Option to toggle "debug mode" vs "clean mode"
 
-### Debug Mode Features
+### Debug/Clean Mode Toggle (Priority 3)
 
-- [ ] Show landmark indices on hover/click
-- [ ] Highlight low-confidence landmarks in red
-- [ ] Show skeleton connectivity issues visually
+- [ ] Add `mode` parameter: `"debug"` vs `"clean"`
+- [ ] Debug mode: Show dots + landmark indices + low-confidence highlights (red)
+- [ ] Clean mode: Smooth lines only, no dots (Sign-MT style)
+- [ ] Show skeleton connectivity issues visually (broken limbs = dashed lines?)
+
+### MediaPipe Best Practices to Implement
+
+| Pattern | Description | Status |
+|---------|-------------|--------|
+| Visibility threshold | Skip landmarks with visibility < 0.5 | ✅ In recognition_base.py |
+| Both endpoints check | Only draw connection if both endpoints valid | ⬜ TODO |
+| Points after lines | Draw joints after skeleton lines | ⬜ TODO |
+| DrawingSpec pattern | Per-landmark color/thickness customization | ⬜ TODO |
 
 ### Design Tradeoffs: Our Choices vs Sign-MT
 
