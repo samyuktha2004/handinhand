@@ -2,8 +2,103 @@
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
 **Last Updated:** January 30, 2026  
-**Status:** 🟢 MVP READY - Quality Filtering In Progress
-Add to docs/PROGRESS_CHECKLIST.md for exact progress checklist
+**Status:** 🟢 MVP READY - Skeleton-First Development
+
+See [PROGRESS_CHECKLIST.md](PROGRESS_CHECKLIST.md) for exact task tracking.
+
+---
+
+## 🎯 Development Strategy: Skeleton-First
+
+**Decision (Jan 30, 2026):** Focus on perfecting the skeleton visualizer before any avatar integration.
+
+### Rationale
+
+The semantic information IS the skeleton. If landmarks move correctly, any rigged avatar will too. Premature avatar integration creates a debugging nightmare ("is the recognition wrong or is the avatar rigging wrong?").
+
+### Roadmap
+
+1. **Phase 1: Perfect the skeleton** ← CURRENT
+   - Landmark quality filtering ✅
+   - Skeleton connectivity ✅
+   - Visualization improvements (Sign-MT learnings)
+   - Temporal smoothing
+
+2. **Phase 2: Bidirectional translation**
+   - ASL ↔ BSL concept mapping
+   - Embedding interpolation for smooth transitions
+   - Real-time streaming pipeline
+
+3. **Phase 3: Avatar integration**
+   - VRM model loader
+   - Landmark → bone rotation retargeting
+   - Multiple avatar support ("skins")
+
+### Risk Mitigations
+
+| Risk                   | Mitigation                                       |
+| ---------------------- | ------------------------------------------------ |
+| Stakeholder perception | Label skeleton view as "Developer Mode" in UI    |
+| Facial expressions     | Use shaped landmarks (eyes, lips) + color coding |
+| Late avatar issues     | Define adapter interface early (even if unused)  |
+
+---
+
+## 📚 Sign-MT Visualization Insights - Analysing Existing Sign Language Models
+
+### Key Learnings for Skeleton Visualizer
+
+**Face:**
+
+- Eyes rendered as shapes with lids (not dots)
+- Eyebrows as curved lines (important for non-manual markers)
+- Lips as contoured shape
+- Nose outline (subtle)
+
+**Hands:**
+
+- Each finger is a different color (cyan, green, blue, orange, red)
+- Palm→fingertip connecting lines drawn
+- Left/right hand color distinction
+
+**Body:**
+
+- Trapezoid torso shape (simple, effective)
+- Arms connected: shoulder→elbow→wrist
+- No neck (floating face)
+
+**Rendering:**
+
+- Anti-aliased smooth lines
+- Not sharp/jagged points
+- Clean, minimal aesthetic
+
+### Design Differences: Why They Made Different Choices
+
+| Our Approach             | Sign-MT Approach | Why We Keep Ours                              | Why They Skipped It                                                                                  |
+| ------------------------ | ---------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Neck connection**      | Floating face    | Anatomical completeness, smoother transitions | MediaPipe has no "neck" landmark—must interpolate. Floating face hides face↔pose model misalignment. |
+| **Debug dots on joints** | Shapes only      | Essential for development debugging           | Optimized for end-user, not debugging                                                                |
+| **Explicit arm lines**   | Trapezoid body   | Clear visibility of arm positions             | Trapezoid may hide arm occlusion issues when hands are in signing space                              |
+
+### Potential Issues to Watch For
+
+1. **Neck jitter** - Our neck interpolates shoulder-midpoint → nose. During fast head movements, may "stretch" or "compress" unnaturally.
+   - _Test:_ Fast head turns while signing
+   - _Mitigation:_ Add smoothing to neck length, or clamp max stretch
+
+2. **Face-pose misalignment** - MediaPipe face mesh and pose are separate models. Connected neck EXPOSES misalignment that floating face HIDES.
+   - _Test:_ Profile views, turning head
+   - _Mitigation:_ Slight offset tolerance, or disconnect during large misalignments
+
+3. **Arm occlusion in signing space** - Explicit arm lines may look "broken" during self-occlusion (hands crossing body).
+   - _Test:_ Signs with arms crossed, hands touching face
+   - _Mitigation:_ Reduce arm line opacity when hands in front of torso, or use Z-order
+
+4. **Landmark confidence during fast motion** - Their smooth shapes may hide per-frame jitter we expose with dots.
+   - _Test:_ Fast fingerspelling sequences
+   - _Mitigation:_ Add temporal smoothing (Phase 3 motion validation)
+
 ---
 
 ## 🔧 Jan 30, 2026 - Landmark Quality Filtering

@@ -4,6 +4,52 @@
 
 ---
 
+## Development Strategy: Skeleton-First
+
+**Principle:** Perfect the skeleton visualizer before adding avatars. The avatar is just "skin on skeleton."
+
+### Why Skeleton-First
+
+- ✅ Recognition logic 100% independent of rendering
+- ✅ Faster iteration (no VRM/3D complexity)
+- ✅ Easier debugging (see exactly which landmarks are wrong)
+- ✅ Lighter runtime (no Three.js, works on low-end devices)
+- ✅ Avatar becomes swappable skin layer
+
+### Risk Mitigations
+
+| Risk                                 | Mitigation                                                  |
+| ------------------------------------ | ----------------------------------------------------------- |
+| Looks "unfinished" to stakeholders   | Label as "Developer Mode" / "Debug View" in UI              |
+| Facial expressions harder to read    | Use landmark shapes + color coding (see Sign-MT approach)   |
+| Avatar integration surprises         | Define adapter interface early (landmarks → bone rotations) |
+| Occlusion/foreshortening differences | Test with 2D + 3D views before avatar integration           |
+
+---
+
+## Roadmap Overview
+
+```
+Phase 1: Perfect the skeleton ◄── YOU ARE HERE
+├── Fix landmark connectivity
+├── Draw all body segments properly
+├── Ensure hands attach to wrists
+├── Add Sign-MT style visualization
+└── Smooth temporal jitter
+
+Phase 2: Bidirectional translation
+├── ASL ↔ BSL concept mapping
+├── Embedding interpolation
+└── Real-time pipeline
+
+Phase 3: Avatar = "apply skin"
+├── VRM loader
+├── Retarget landmarks → bone rotations
+└── Multiple avatar support
+```
+
+---
+
 ## Current Phase: Landmark Quality Filtering
 
 ### Landmark Quality Filtering 🔄 IN PROGRESS
@@ -90,6 +136,57 @@
 - [ ] Add 468 face landmarks
 - [ ] Assess impact on recognition
 - [ ] Palm orientation indicator (Z-coordinate)
+
+---
+
+## Skeleton Visualizer Improvements 🔄 TODO
+
+**Learnings from Sign-MT Reference:**
+
+### Face Rendering
+
+- [ ] Draw face as shapes not dots (eyes with lids, eyebrows, lips contour)
+- [ ] Nose outline (subtle, non-distracting)
+- [ ] Eyebrow position/shape for non-manual markers
+
+### Hand Rendering
+
+- [ ] Color-code each finger (5 distinct colors)
+- [ ] Draw palm→fingertip connecting lines for all 5 fingers
+- [ ] Left hand / right hand color distinction
+
+### Body Rendering
+
+- [ ] Trapezoid torso (simple, effective)
+- [ ] Shoulder→elbow→wrist lines (currently missing!)
+- [ ] Keep neck connection (we have it, they skip it—see tradeoffs below)
+
+### Rendering Quality
+
+- [ ] Anti-aliased lines (smooth, not jagged)
+- [ ] Larger joint dots during debug mode
+- [ ] Option to toggle "debug mode" vs "clean mode"
+
+### Debug Mode Features
+
+- [ ] Show landmark indices on hover/click
+- [ ] Highlight low-confidence landmarks in red
+- [ ] Show skeleton connectivity issues visually
+
+### Design Tradeoffs: Our Choices vs Sign-MT
+
+| Our Approach       | Sign-MT        | Why We Keep Ours                        | Why They Skipped                                         |
+| ------------------ | -------------- | --------------------------------------- | -------------------------------------------------------- |
+| Neck connection    | Floating face  | Anatomical accuracy, smooth transitions | No MediaPipe neck landmark; hides face↔pose misalignment |
+| Debug dots         | Shapes only    | Essential during development            | End-user optimized                                       |
+| Explicit arm lines | Trapezoid body | Clear arm position visibility           | Hides occlusion issues                                   |
+
+### Potential Issues to Watch
+
+- [ ] **Neck jitter** - Test fast head turns; may need smoothing or max-stretch clamp
+- [ ] **Face-pose misalignment** - Test profile views; may need offset tolerance
+- [ ] **Arm occlusion** - Test crossed arms/hands-on-face signs; may need Z-order or opacity
+- [ ] **Fast motion jitter** - Test fingerspelling; add temporal smoothing if needed
 
 ---
 
