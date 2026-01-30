@@ -1,8 +1,118 @@
 # Progress Log
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
-**Last Updated:** January 29, 2026  
-**Status:** 🟢 CODE AUDIT COMPLETE
+**Last Updated:** January 30, 2026  
+**Status:** 🟢 MVP READY - Quality Filtering In Progress
+Add to docs/PROGRESS_CHECKLIST.md for exact progress checklist
+---
+
+## 🔧 Jan 30, 2026 - Landmark Quality Filtering
+
+### Overview
+
+Implementing 3-phase quality filtering to prevent bad MediaPipe detections from corrupting embeddings.
+
+### Phase 1: Visibility Filtering (Current)
+
+**Problem:** MediaPipe sometimes produces low-confidence landmarks that corrupt embeddings.
+
+| Task | Description                                           | Status  |
+| ---- | ----------------------------------------------------- | ------- |
+| 1.1  | Add `VISIBILITY_THRESHOLD = 0.5` constant             | ✅ Done |
+| 1.2  | Modify `extract_landmarks()` to check visibility      | ✅ Done |
+| 1.3  | Mark low-visibility landmarks as `[0,0,0]` with mask  | ✅ Done |
+| 1.4  | Add `is_frame_quality_good()` method                  | ✅ Done |
+| 1.5  | Add `check_skeleton_connectivity()` method            | ✅ Done |
+| 1.6  | Add window quality gate in `compute_embedding()`      | ✅ Done |
+| 1.7  | Update `generate_embeddings.py` with masked averaging | ⬜      |
+| 1.8  | Test visibility filtering end-to-end                  | ✅ Done |
+
+### Phase 2: Skeleton Connectivity (Next)
+
+**Problem:** Even high-confidence landmarks can be wrong if skeleton is broken.
+
+| Task | Description                                       | Status  |
+| ---- | ------------------------------------------------- | ------- |
+| 2.1  | Define `LIMB_CONNECTIONS` constant                | ✅ Done |
+| 2.2  | Add "both endpoints valid" check per limb         | ✅ Done |
+| 2.3  | Add window quality gate (require 70% good frames) | ✅ Done |
+
+### Phase 3: Motion Validation (Future)
+
+**Problem:** Landmarks can "teleport" between frames on bad detections.
+
+| Task | Description                                    | Status |
+| ---- | ---------------------------------------------- | ------ |
+| 3.1  | Add velocity clipping on 3D coordinates        | ⬜     |
+| 3.2  | Optional: Proportional neighbor distance check | ⬜     |
+
+### Technical Details
+
+**Visibility filtering approach:**
+
+```python
+VISIBILITY_THRESHOLD = 0.5
+
+# In extract_landmarks():
+if landmark.visibility < VISIBILITY_THRESHOLD:
+    landmarks.append([0, 0, 0])  # Mark as missing
+else:
+    landmarks.append([lm.x, lm.y, lm.z])
+```
+
+**Masked averaging for mean embeddings:**
+
+```python
+# Current (corrupted by zeros):
+mean = np.mean(embeddings, axis=0)
+
+# Fixed (ignores zeros):
+masked = np.ma.masked_where(embeddings == 0, embeddings)
+mean = np.ma.mean(masked, axis=0).filled(0)
+```
+
+---
+
+## 🟢 Jan 30, 2026 - Recognition Engine Refactor
+
+### Completed Work
+
+**Recognition Engine Consolidation:**
+
+- ✅ Created `recognition_base.py` with shared logic (267 lines)
+- ✅ Refactored `recognition_engine.py` to inherit from base (524 → 183 lines)
+- ✅ Refactored `recognition_engine_ui.py` to inherit from base (850 → 561 lines)
+- ✅ Total reduction: 1373 → 1011 lines (26% less code)
+- ✅ All imports and method checks passing
+- ✅ Recognition logic tested and working
+
+---
+
+## 🟢 Jan 29, 2026 (Part 3) - Documentation & Final Fixes
+
+### Completed Work
+
+**Recognition Engine Fixes:**
+
+- ✅ Fixed landmark mismatch: POSE_INDICES [11-16] + FACE_INDICES [70,107,300,336]
+- ✅ Added scale invariance (shoulder width normalization) to recognition_engine_ui.py
+- ✅ Recognition engines now match signature extraction format exactly
+
+**Documentation:**
+
+- ✅ Created [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) with market analysis
+- ✅ Documented target audience, use cases, technical architecture
+- ✅ Updated README.md with current links
+- ✅ Streamlined TECH_LEAD_ASSESSMENT.md (removed historical failure logs)
+
+**Current Recognition Quality:**
+| Word | Score |
+|------|-------|
+| hello | 0.7148 |
+| where | 0.5931 |
+| you | 0.7763 |
+| go | 0.8515 |
+| **Average** | **0.7339** |
 
 ---
 
@@ -54,7 +164,106 @@ Created comprehensive [docs/CODE_AUDIT.md](docs/CODE_AUDIT.md) with:
 
 ---
 
-## 🟢 Jan 29, 2026 (Part 1) - Reference Body & Placeholder Logic
+## � Research Insights - Sign Language Recognition Techniques
+
+After reviewing state-of-the-art sign language translation systems, here are actionable
+insights to improve HandInHand. These are **techniques and patterns** to implement ourselves,
+not copied code.
+
+### Immediately Actionable (Phase 1)
+
+| Technique                    | Insight                                                                                                                    | Benefit                          | Priority  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------- |
+| **Landmark Filtering**       | Remove face landmarks from body pose (eyes, ears, nose = indices 0-10). They add noise without improving sign recognition. | Cleaner embeddings, faster DTW   | 🔴 High   |
+| **Sliding Window Smoothing** | Use 15-20 frame window for shoulder width calculation instead of per-frame. Reduces jitter from noisy pose detection.      | Smoother normalization           | 🟡 Medium |
+| **Rotation Bucketing**       | Quantize hand rotation into 8 bins (45° each) instead of continuous angles. Reduces variability in matching.               | Better hand orientation matching | 🟡 Medium |
+
+### Future Phases (After MVP)
+
+| Technique                      | Insight                                                                                                          | When to Add                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **Sign Activity Detection**    | Compute frame-to-frame optical flow to detect when signing starts/stops. Currently we assume continuous signing. | Phase 2: Real-time mode    |
+| **Frame Dropout Augmentation** | During signature generation, randomly drop frames to make embeddings robust to different video FPS.              | Phase 2: Data augmentation |
+| **Sequential Models (LSTM)**   | DTW works well for our current scale. At 100+ signs, consider LSTM classifier on normalized pose sequences.      | Phase 3: Scaling           |
+| **Hand Shape Classification**  | Train dedicated model for hand shape (fist, open, pointing, etc.) as separate feature. Improves disambiguation.  | Phase 3: Feature expansion |
+
+### Not Relevant for HandInHand
+
+| Technique                | Why Skip                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| SignWriting intermediate | Different paradigm - we do direct embedding matching, not linguistic transcription |
+| Avatar/GAN synthesis     | We're recognition-focused, not production-focused                                  |
+| Text-to-sign translation | Out of scope for MVP                                                               |
+
+### Implementation Checklist
+
+**Phase 1 - Quick Wins:**
+
+- [x] ~~Filter out landmark indices 0-10 (face features) from pose before embedding~~ ✅ Already done in `extract_signatures.py`
+- [x] Fixed landmark mismatch: recognition engines now use POSE_INDICES [11-16] + correct FACE_INDICES
+- [x] Added scale invariance (shoulder width normalization) to `recognition_engine_ui.py`
+- [ ] Add sliding window (n=20) for shoulder width in normalization
+- [ ] Consider rotation bucketing for hand orientation features
+
+**Phase 2 - Robustness:**
+
+- [ ] Add sign activity detection (motion threshold) for real-time mode
+- [ ] Implement frame dropout augmentation in `augment_signatures.py`
+- [ ] Add FPS normalization during signature extraction
+- [ ] Regenerate embeddings with quality gates (see plan below)
+
+**Phase 3 - Scaling:**
+
+- [ ] Evaluate LSTM vs DTW performance at 50+ signs
+- [ ] Add hand shape classifier as supplementary feature
+- [ ] Multi-modal fusion (pose + hand shape + motion)
+
+---
+
+## 🔧 Embedding Regeneration Plan
+
+**Problem:** Current embeddings may contain artifacts from corrupted signatures and mismatched landmark extraction.
+
+**Solution:** Regenerate with strict quality gates and consistent pipeline.
+
+### Quality Gates (Already in `generate_embeddings.py`)
+
+| Gate              | Threshold | Purpose                                          |
+| ----------------- | --------- | ------------------------------------------------ |
+| MIN_POSE_QUALITY  | 80%       | Skip signatures with <80% valid pose frames      |
+| MIN_HAND_QUALITY  | 20%       | Skip signatures with <20% valid hand frames      |
+| OUTLIER_THRESHOLD | 3.0       | Remove frames >3 z-score from median (MAD-based) |
+
+### Regeneration Steps
+
+```bash
+# Step 1: Audit current signatures
+python3 skeleton_debugger.py --audit hello
+python3 skeleton_debugger.py --audit you
+python3 skeleton_debugger.py --audit go
+python3 skeleton_debugger.py --audit where
+
+# Step 2: Quarantine bad variants (based on audit results)
+python3 skeleton_debugger.py --quarantine asl/you_0  # different motion pattern
+python3 skeleton_debugger.py --quarantine asl/go_1   # wrong dominant hand
+
+# Step 3: Regenerate embeddings (quality gates auto-filter remaining issues)
+python3 generate_embeddings.py
+
+# Step 4: Verify new embeddings
+python3 test_recognition_quality.py
+```
+
+### Expected Improvements
+
+1. **Consistent landmark structure**: Recognition now matches signature extraction exactly
+2. **Scale invariance**: Added shoulder width normalization to UI engine
+3. **Quality filtering**: Low-quality signatures auto-skipped
+4. **Outlier removal**: Corrupted frames filtered per-signature
+
+---
+
+## Jan 29, 2026 (Part 1) - Reference Body & Placeholder Logic
 
 ### Completed Work
 
@@ -293,12 +502,12 @@ Quality audit revealed systematic failure in hand landmark extraction:
    - Low false positive risk
    - ✅ Within-variant consistency: 0.821 (good)
 
-2. 🔄 Live video recognition test (NEXT)
+2. Live video recognition test (NEXT)
    - Initialize RecognitionEngine ✅
    - Run on webcam or video file
    - Verify correct identification
 
-3. 📋 Facial features (AFTER live test works)
+3. Facial features (AFTER live test works)
    - Eye brows (2 pts)
    - Mouth (2 pts)
    - Head position (1 pt)

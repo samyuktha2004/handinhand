@@ -1,12 +1,38 @@
 # HandInHand Progress Checklist
 
-**Last Updated**: 2026-01-28
+**Last Updated**: 2026-01-30
 
 ---
 
-## Current Phase: Phase 2 - Reference Body & Scaling
+## Current Phase: Landmark Quality Filtering
 
-### Phase 1: Core Recognition ✅ COMPLETE
+### Landmark Quality Filtering 🔄 IN PROGRESS
+
+#### Phase 1: Visibility Filtering ✅ COMPLETE
+
+- [x] Add `VISIBILITY_THRESHOLD = 0.5` constant
+- [x] Modify `extract_landmarks()` to check visibility
+- [x] Mark low-visibility landmarks as `[0,0,0]`
+- [x] Add `is_frame_quality_good()` method
+- [x] Add `check_skeleton_connectivity()` method
+- [x] Add window quality gate in `compute_embedding()` (70% good frames)
+- [x] Use masked averaging (ignore zeros)
+- [ ] Update `generate_embeddings.py` with same logic (optional)
+
+#### Phase 2: Skeleton Connectivity ✅ COMPLETE
+
+- [x] Define `LIMB_CONNECTIONS` constant (5 limb pairs)
+- [x] Add "both endpoints valid" check per limb
+- [x] Window quality gate integrated
+
+#### Phase 3: Motion Validation (Future)
+
+- [ ] Add velocity clipping on 3D coordinates
+- [ ] Optional: Proportional neighbor distance check
+
+---
+
+## Core Recognition ✅ COMPLETE
 
 - [x] MediaPipe landmark extraction
 - [x] Signature storage (JSON format)
@@ -14,7 +40,18 @@
 - [x] Recognition engine (Cosine similarity)
 - [x] Recognition quality: **0.7339 average** ✅
 
-### Phase 2: Reference Body & Scaling 🔄 IN PROGRESS
+---
+
+## Recognition Engine Refactor ✅ COMPLETE
+
+- [x] Created `recognition_base.py` (shared logic)
+- [x] Refactored `recognition_engine.py` (524 → 183 lines)
+- [x] Refactored `recognition_engine_ui.py` (850 → 561 lines)
+- [x] Total: 1373 → 1011 lines (26% reduction)
+
+---
+
+## Phase 2: Reference Body & Scaling ✅ MOSTLY COMPLETE
 
 - [x] Create reference body visualization (`show_reference_body.py`)
 - [x] Define body proportions (SHOULDER_WIDTH=100, ARM_LENGTH=100)
