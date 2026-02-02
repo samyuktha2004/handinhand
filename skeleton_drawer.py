@@ -12,12 +12,12 @@ Purpose:
 
 Usage:
     from skeleton_drawer import draw_skeleton
-    img_with_skeleton = draw_skeleton(frame, landmarks_dict, lang="ASL")
+    img_with_skeleton = draw_skeleton(frame, landmarks_dict, lang="ASL", mode="debug")
 """
 
 import cv2
 import numpy as np
-from typing import Dict, Tuple, Any, List
+from typing import Dict, Tuple, Any, List, Optional
 
 
 class SkeletonDrawer:
@@ -27,11 +27,15 @@ class SkeletonDrawer:
     # Pose: 0-32 (33 total)
     # Left Hand: 0-20 (21 per hand, indexed from 0)
     # Right Hand: 0-20
-    # Face: 0-467 (468 total, we'll skip detailed face for now)
+    # Face: 0-467 (468 total)
+    
+    # Face anchor fallback chain for dynamic neck connection
+    # Try in order: nose_tip(1) → glabella(168) → upper_lip(0) → chin(152)
+    FACE_ANCHOR_FALLBACKS = [1, 168, 0, 152]
     
     # Pose connections (body chain)
     # NOTE: Signatures may have 6 landmarks (partial) instead of full 33
-    # Connections only drawn if both indices exist
+    # Connections only drawn if both indices exist and are valid
     POSE_CONNECTIONS = [
         # Full MediaPipe pose connections (if available)
         # Right arm: shoulder -> elbow -> wrist
@@ -52,30 +56,149 @@ class SkeletonDrawer:
         (0, 1), (0, 2), (1, 3), (2, 4), (3, 5),  # Basic skeleton (no wrist-to-wrist line)
     ]
     
-    # Hand connections (per hand: 21 landmarks)
+    # Hand connections grouped by finger for color-coding
     # 0=wrist, 1-4=thumb, 5-8=index, 9-12=middle, 13-16=ring, 17-20=pinky
+    FINGER_CONNECTIONS = {
+        'thumb':  [(0, 1), (1, 2), (2, 3), (3, 4)],
+        'index':  [(0, 5), (5, 6), (6, 7), (7, 8)],
+        'middle': [(0, 9), (9, 10), (10, 11), (11, 12)],
+        'ring':   [(0, 13), (13, 14), (14, 15), (15, 16)],
+        'pinky':  [(0, 17), (17, 18), (18, 19), (19, 20)],
+    }
+    
+    # Flat list for backwards compatibility
     HAND_CONNECTIONS = [
-        # Thumb
-        (0, 1), (1, 2), (2, 3), (3, 4),
-        # Index
-        (0, 5), (5, 6), (6, 7), (7, 8),
-        # Middle
-        (0, 9), (9, 10), (10, 11), (11, 12),
-        # Ring
-        (0, 13), (13, 14), (14, 15), (15, 16),
-        # Pinky
-        (0, 17), (17, 18), (18, 19), (19, 20),
+        (0, 1), (1, 2), (2, 3), (3, 4),      # Thumb
+        (0, 5), (5, 6), (6, 7), (7, 8),      # Index
+        (0, 9), (9, 10), (10, 11), (11, 12), # Middle
+        (0, 13), (13, 14), (14, 15), (15, 16), # Ring
+        (0, 17), (17, 18), (18, 19), (19, 20), # Pinky
     ]
     
+    # Finger colors (BGR) - distinct colors per finger
+    FINGER_COLORS = {
+        'thumb':  (0, 0, 255),     # Red
+        'index':  (0, 165, 255),   # Orange
+        'middle': (0, 255, 0),     # Green
+        'ring':   (255, 0, 0),     # Blue
+        'pinky':  (255, 0, 255),   # Purple/Magenta
+    }
+    
     # Colors for visualization (BGR)
-    COLOR_POSE = (0, 255, 0)      # Green for body
-    COLOR_LEFT_HAND = (255, 0, 0)  # Blue for left hand
-    COLOR_RIGHT_HAND = (0, 0, 255) # Red for right hand
+    COLOR_POSE = (0, 255, 0)       # Green for body
+    COLOR_NECK = (0, 200, 200)     # Cyan-yellow for neck
+    COLOR_LEFT_HAND = (255, 0, 0)  # Blue for left hand (base)
+    COLOR_RIGHT_HAND = (0, 0, 255) # Red for right hand (base)
     COLOR_JOINT = (0, 255, 255)    # Yellow for joints
+    COLOR_JOINT_BORDER = (255, 255, 255)  # White border for joints
     
     THICKNESS_LINE = 2
     THICKNESS_JOINT = 4
     JOINT_RADIUS = 3
+    JOINT_RADIUS_DEBUG = 5  # Larger dots in debug mode
+    
+    @staticmethod
+    def _get_face_anchor(face_landmarks: np.ndarray, h: int, w: int) -> Optional[Tuple[int, int]]:
+        """
+        Get face anchor point for dynamic neck connection.
+        Uses fallback chain: nose_tip(1) → glabella(168) → upper_lip(0) → chin(152)
+        
+        Args:
+            face_landmarks: Face landmarks array (468 x 2/3)
+            h, w: Frame dimensions for validation
+        
+        Returns:
+            (x, y) tuple if valid anchor found, None otherwise
+        """
+        for idx in SkeletonDrawer.FACE_ANCHOR_FALLBACKS:
+            if idx < len(face_landmarks):
+                pt = face_landmarks[idx][:2]
+                # Check if point is valid (not zero and within bounds)
+                if pt[0] != 0 or pt[1] != 0:
+                    pt_int = (int(pt[0]), int(pt[1]))
+                    if SkeletonDrawer._is_valid_point(pt_int, h, w):
+                        return pt_int
+        return None
+    
+    @staticmethod
+    def _get_shoulder_midpoint(pose: np.ndarray, h: int, w: int) -> Optional[Tuple[int, int]]:
+        """
+        Get shoulder midpoint for neck connection.
+        
+        Args:
+            pose: Pose landmarks array
+            h, w: Frame dimensions for validation
+        
+        Returns:
+            (x, y) tuple if valid, None otherwise
+        """
+        # MediaPipe pose: 11 = left shoulder, 12 = right shoulder
+        if len(pose) > 12:
+            left_shoulder = pose[11][:2]
+            right_shoulder = pose[12][:2]
+            
+            # Check both shoulders are valid
+            if (left_shoulder[0] != 0 or left_shoulder[1] != 0) and \
+               (right_shoulder[0] != 0 or right_shoulder[1] != 0):
+                midpoint = ((left_shoulder[0] + right_shoulder[0]) / 2,
+                           (left_shoulder[1] + right_shoulder[1]) / 2)
+                pt_int = (int(midpoint[0]), int(midpoint[1]))
+                if SkeletonDrawer._is_valid_point(pt_int, h, w):
+                    return pt_int
+        return None
+    
+    @staticmethod
+    def _draw_hand_colored(
+        frame: np.ndarray,
+        hand_landmarks: np.ndarray,
+        h: int, w: int,
+        base_color: Tuple[int, int, int],
+        mode: str = "debug",
+        use_finger_colors: bool = True
+    ) -> None:
+        """
+        Draw hand skeleton with color-coded fingers.
+        
+        Args:
+            frame: Image to draw on (modified in place)
+            hand_landmarks: Hand landmarks array (21 x 2/3)
+            h, w: Frame dimensions
+            base_color: Base color for the hand (used if use_finger_colors=False)
+            mode: "debug" or "clean"
+            use_finger_colors: If True, each finger gets distinct color
+        """
+        line_type = cv2.LINE_AA  # Anti-aliased lines
+        
+        # Draw connections (lines first, then points overlay)
+        for finger_name, connections in SkeletonDrawer.FINGER_CONNECTIONS.items():
+            color = SkeletonDrawer.FINGER_COLORS[finger_name] if use_finger_colors else base_color
+            
+            for idx1, idx2 in connections:
+                if idx1 < len(hand_landmarks) and idx2 < len(hand_landmarks):
+                    pt1 = tuple(map(int, hand_landmarks[idx1][:2]))
+                    pt2 = tuple(map(int, hand_landmarks[idx2][:2]))
+                    
+                    # Both endpoints must be valid
+                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
+                       SkeletonDrawer._is_valid_point(pt2, h, w) and \
+                       (pt1[0] != 0 or pt1[1] != 0) and \
+                       (pt2[0] != 0 or pt2[1] != 0):
+                        cv2.line(frame, pt1, pt2, color, 
+                                SkeletonDrawer.THICKNESS_LINE, line_type)
+        
+        # Draw joints (after lines for visual overlay) - only in debug mode
+        if mode == "debug":
+            joint_radius = SkeletonDrawer.JOINT_RADIUS_DEBUG
+            for i, point in enumerate(hand_landmarks):
+                pt = tuple(map(int, point[:2]))
+                if SkeletonDrawer._is_valid_point(pt, h, w) and \
+                   (pt[0] != 0 or pt[1] != 0):
+                    # White border first
+                    cv2.circle(frame, pt, joint_radius + 1,
+                              SkeletonDrawer.COLOR_JOINT_BORDER, -1, cv2.LINE_AA)
+                    # Colored fill
+                    cv2.circle(frame, pt, joint_radius,
+                              SkeletonDrawer.COLOR_JOINT, -1, cv2.LINE_AA)
     
     @staticmethod
     def draw_skeleton(
@@ -83,7 +206,8 @@ class SkeletonDrawer:
         landmarks: Dict[str, np.ndarray],
         lang: str = "ASL",
         show_joints: bool = True,
-        show_confidence: bool = False
+        show_confidence: bool = False,
+        mode: str = "debug"
     ) -> np.ndarray:
         """
         Draw 2D skeleton on frame from MediaPipe landmarks.
@@ -95,14 +219,20 @@ class SkeletonDrawer:
             lang: Language label for display (ASL/BSL)
             show_joints: Draw circles at joint positions
             show_confidence: Print confidence scores (if available)
+            mode: "debug" (dots + indices) or "clean" (smooth lines only)
         
         Returns:
             frame with skeleton drawn
         """
         frame = frame.copy()
         h, w = frame.shape[:2]
+        line_type = cv2.LINE_AA  # Anti-aliased lines
         
-        # Draw pose skeleton (body)
+        # Determine joint radius based on mode
+        joint_radius = SkeletonDrawer.JOINT_RADIUS_DEBUG if mode == "debug" else SkeletonDrawer.JOINT_RADIUS
+        
+        # Draw pose skeleton (body) - lines first
+        pose_joints_to_draw = []  # Collect joints to draw after lines
         if 'pose' in landmarks and landmarks['pose'] is not None:
             pose = landmarks['pose']
             for idx1, idx2 in SkeletonDrawer.POSE_CONNECTIONS:
@@ -110,66 +240,66 @@ class SkeletonDrawer:
                     pt1 = tuple(map(int, pose[idx1][:2]))
                     pt2 = tuple(map(int, pose[idx2][:2]))
                     
-                    # Validity check (ensure points are within frame)
+                    # Both endpoints must be valid (MediaPipe pattern)
                     if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                       SkeletonDrawer._is_valid_point(pt2, h, w):
+                       SkeletonDrawer._is_valid_point(pt2, h, w) and \
+                       (pt1[0] != 0 or pt1[1] != 0) and \
+                       (pt2[0] != 0 or pt2[1] != 0):
                         cv2.line(frame, pt1, pt2, 
                                 SkeletonDrawer.COLOR_POSE, 
-                                SkeletonDrawer.THICKNESS_LINE)
+                                SkeletonDrawer.THICKNESS_LINE, line_type)
             
-            # Draw joints
-            if show_joints:
+            # Dynamic neck connection: shoulder_midpoint → face_anchor
+            shoulder_midpoint = SkeletonDrawer._get_shoulder_midpoint(pose, h, w)
+            if shoulder_midpoint is not None:
+                face_anchor = None
+                if 'face' in landmarks and landmarks['face'] is not None:
+                    face_anchor = SkeletonDrawer._get_face_anchor(landmarks['face'], h, w)
+                
+                if face_anchor is not None:
+                    cv2.line(frame, shoulder_midpoint, face_anchor,
+                            SkeletonDrawer.COLOR_NECK, 
+                            SkeletonDrawer.THICKNESS_LINE, line_type)
+            
+            # Collect pose joints to draw
+            if show_joints and mode == "debug":
                 for point in pose:
                     pt = tuple(map(int, point[:2]))
-                    if SkeletonDrawer._is_valid_point(pt, h, w):
-                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                  SkeletonDrawer.COLOR_JOINT, -1)
+                    if SkeletonDrawer._is_valid_point(pt, h, w) and \
+                       (pt[0] != 0 or pt[1] != 0):
+                        pose_joints_to_draw.append(pt)
         
-        # Draw left hand skeleton
+        # Draw hands with color-coded fingers
         if 'left_hand' in landmarks and landmarks['left_hand'] is not None:
-            left_hand = landmarks['left_hand']
-            for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
-                if idx1 < len(left_hand) and idx2 < len(left_hand):
-                    pt1 = tuple(map(int, left_hand[idx1][:2]))
-                    pt2 = tuple(map(int, left_hand[idx2][:2]))
-                    
-                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                       SkeletonDrawer._is_valid_point(pt2, h, w):
-                        cv2.line(frame, pt1, pt2,
-                                SkeletonDrawer.COLOR_LEFT_HAND,
-                                SkeletonDrawer.THICKNESS_LINE)
-            
-            if show_joints:
-                for point in left_hand:
-                    pt = tuple(map(int, point[:2]))
-                    if SkeletonDrawer._is_valid_point(pt, h, w):
-                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                  SkeletonDrawer.COLOR_LEFT_HAND, -1)
+            SkeletonDrawer._draw_hand_colored(
+                frame, landmarks['left_hand'], h, w,
+                SkeletonDrawer.COLOR_LEFT_HAND, mode, use_finger_colors=True
+            )
         
-        # Draw right hand skeleton
         if 'right_hand' in landmarks and landmarks['right_hand'] is not None:
-            right_hand = landmarks['right_hand']
-            for idx1, idx2 in SkeletonDrawer.HAND_CONNECTIONS:
-                if idx1 < len(right_hand) and idx2 < len(right_hand):
-                    pt1 = tuple(map(int, right_hand[idx1][:2]))
-                    pt2 = tuple(map(int, right_hand[idx2][:2]))
-                    
-                    if SkeletonDrawer._is_valid_point(pt1, h, w) and \
-                       SkeletonDrawer._is_valid_point(pt2, h, w):
-                        cv2.line(frame, pt1, pt2,
-                                SkeletonDrawer.COLOR_RIGHT_HAND,
-                                SkeletonDrawer.THICKNESS_LINE)
-            
-            if show_joints:
-                for point in right_hand:
-                    pt = tuple(map(int, point[:2]))
-                    if SkeletonDrawer._is_valid_point(pt, h, w):
-                        cv2.circle(frame, pt, SkeletonDrawer.JOINT_RADIUS,
-                                  SkeletonDrawer.COLOR_RIGHT_HAND, -1)
+            SkeletonDrawer._draw_hand_colored(
+                frame, landmarks['right_hand'], h, w,
+                SkeletonDrawer.COLOR_RIGHT_HAND, mode, use_finger_colors=True
+            )
+        
+        # Draw pose joints AFTER lines (MediaPipe pattern - aesthetically better)
+        if mode == "debug":
+            for pt in pose_joints_to_draw:
+                # White border first
+                cv2.circle(frame, pt, joint_radius + 1,
+                          SkeletonDrawer.COLOR_JOINT_BORDER, -1, line_type)
+                # Colored fill
+                cv2.circle(frame, pt, joint_radius,
+                          SkeletonDrawer.COLOR_JOINT, -1, line_type)
         
         # Add language label
         cv2.putText(frame, lang, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                   1.0, (255, 255, 255), 2)
+                   1.0, (255, 255, 255), 2, line_type)
+        
+        # Add mode indicator
+        mode_label = "[DEBUG]" if mode == "debug" else "[CLEAN]"
+        cv2.putText(frame, mode_label, (w - 100, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                   0.5, (200, 200, 200), 1, line_type)
         
         return frame
     
