@@ -28,6 +28,39 @@ See [BODY_MODEL_INSIGHTS.md](BODY_MODEL_INSIGHTS.md) for Andrew Entwistle model 
 
 ---
 
+## Joint Anatomy Research (Feb 2, 2026) ✅ NEW
+
+### Key Insights Documented
+
+See [JOINT_ANATOMY_INSIGHTS.md](JOINT_ANATOMY_INSIGHTS.md) for full documentation.
+
+| Joint Type | DOF | Application |
+|------------|-----|-------------|
+| Ball-and-Socket | 3 | Shoulder - maximum freedom |
+| Hinge | 1 | Elbow, finger IP - flex/extend only |
+| Saddle | 2 | **Thumb CMC** - unique opposition capability |
+| Condyloid | 2 | Wrist, knuckles - 2-axis movement |
+
+### Implementation Checklist
+
+- [ ] Implement elbow ROM validation (max 160° flexion, 10° hyperextension)
+- [ ] Implement wrist ROM validation (±50° ulnar, ±30° radial)
+- [ ] Implement finger MCP/PIP/DIP ROM validation
+- [ ] Add thumb special handling (saddle joint allows opposition)
+- [ ] Implement thumb opposition detection for fingerspelling
+- [ ] Add joint validity scoring function
+- [ ] Integrate frame rejection based on validity score
+- [ ] Implement joint coupling constraints (wrist-finger, finger-finger)
+
+### Critical Finding: Thumb vs. Fingers
+
+The thumb has a **saddle joint** at the CMC (carpometacarpal) level, enabling:
+- **Opposition** - moving perpendicular to palm (other fingers cannot)
+- **Greater movement range** - must allow wider angles for thumb landmarks
+- **Different validation rules** - thumb should not be constrained like other fingers
+
+---
+
 ## Current Phase: Phase 2 - Reference Body & Scaling
 
 ### Phase 1: Core Recognition ✅ COMPLETE
