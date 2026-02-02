@@ -34,12 +34,12 @@ See [BODY_MODEL_INSIGHTS.md](BODY_MODEL_INSIGHTS.md) for Andrew Entwistle model 
 
 See [JOINT_ANATOMY_INSIGHTS.md](JOINT_ANATOMY_INSIGHTS.md) for full documentation.
 
-| Joint Type | DOF | Application |
-|------------|-----|-------------|
-| Ball-and-Socket | 3 | Shoulder - maximum freedom |
-| Hinge | 1 | Elbow, finger IP - flex/extend only |
-| Saddle | 2 | **Thumb CMC** - unique opposition capability |
-| Condyloid | 2 | Wrist, knuckles - 2-axis movement |
+| Joint Type      | DOF | Application                                  |
+| --------------- | --- | -------------------------------------------- |
+| Ball-and-Socket | 3   | Shoulder - maximum freedom                   |
+| Hinge           | 1   | Elbow, finger IP - flex/extend only          |
+| Saddle          | 2   | **Thumb CMC** - unique opposition capability |
+| Condyloid       | 2   | Wrist, knuckles - 2-axis movement            |
 
 ### Implementation Checklist
 
@@ -55,9 +55,46 @@ See [JOINT_ANATOMY_INSIGHTS.md](JOINT_ANATOMY_INSIGHTS.md) for full documentatio
 ### Critical Finding: Thumb vs. Fingers
 
 The thumb has a **saddle joint** at the CMC (carpometacarpal) level, enabling:
+
 - **Opposition** - moving perpendicular to palm (other fingers cannot)
 - **Greater movement range** - must allow wider angles for thumb landmarks
 - **Different validation rules** - thumb should not be constrained like other fingers
+
+---
+
+## Academic Research (Feb 2, 2026) ✅ NEW
+
+### SAM-SLR Paper Analysis
+
+See [RESEARCH_INSIGHTS.md](RESEARCH_INSIGHTS.md) for full documentation.
+
+**Source:** Jiang et al., arXiv:2103.08833v5 (2021) - 1st place CVPR-21 SLR Challenge  
+**License:** arXiv non-exclusive license ✅ (can cite and use insights)
+
+| Finding                                   | Impact          | Priority  |
+| ----------------------------------------- | --------------- | --------- |
+| **Graph Reduction** (133→27 nodes)        | +31% accuracy   | 🔴 High   |
+| Multi-stream (Joint+Bone+Motion)          | +0.43% accuracy | 🟡 Medium |
+| Data Augmentation (jitter, scale, rotate) | Robustness      | 🟡 Medium |
+| Label Smoothing                           | +1% accuracy    | 🟢 Low    |
+
+### Key Implementation Tasks
+
+- [ ] Test graph reduction (52 → ~27 key nodes)
+- [ ] Add bone vector features (parent→child direction)
+- [ ] Add jittering augmentation to signatures
+- [ ] Add scaling augmentation (body size variation)
+- [ ] Consider motion features (temporal differences)
+
+### Critical Insight: Skeleton > RGB
+
+Skeleton-based methods (95.45%) **outperform** raw RGB (94.77%) while being:
+
+- More computationally efficient
+- More robust to background variation
+- Independent of lighting conditions
+
+**Validates our skeleton-based approach!**
 
 ---
 
