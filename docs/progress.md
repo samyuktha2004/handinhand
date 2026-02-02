@@ -1,12 +1,74 @@
 # Progress Log
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
-**Last Updated:** January 24, 2026  
+**Last Updated:** February 2, 2026  
 **Status:** 🔄 Phase 4 - Signature Quality & Facial Features Planning
 
 ---
 
 ## Current Status
+
+### 📚 Open-Source Anatomy Resources (Feb 2, 2026)
+
+Researched open-source anatomy resources for potential body model reference. All verified for licensing:
+
+#### ✅ Usable Resources (Open License - Attribution Required)
+
+| Resource                 | License           | Attribution               | Use Case                                              |
+| ------------------------ | ----------------- | ------------------------- | ----------------------------------------------------- |
+| **Z-Anatomy**            | CC BY-SA 4.0      | Required                  | 3D skeletal/muscle structure, Blender files available |
+| **Open Anatomy Project** | Open (NIH-funded) | Recommended               | Brain atlases, 3D anatomical models, OABrowser viewer |
+| **AnatomyTOOL**          | CC Licensed       | Per-item basis            | Curated 3D models, dissections, bone scans            |
+| **eSkeletons**           | CC BY-NC-SA 4.0   | Required (non-commercial) | Human/primate skeletal anatomy, comparative study     |
+| **Wikimedia Commons**    | CC0 / CC BY-SA    | Per-file (check each)     | Anatomical plates, SVGs, public domain drawings       |
+| **OpenStax A&P**         | CC BY 4.0         | Required                  | Textbook diagrams, educational reference              |
+| **Anatomy Atlases**      | CC BY-NC-SA 4.0   | Required (non-commercial) | Anatomical illustrations, cross-sections              |
+
+#### ⚠️ Limited Use Resources
+
+| Resource             | Limitation                                       |
+| -------------------- | ------------------------------------------------ |
+| **Teach Me Anatomy** | Commercial/paid for full access - reference only |
+
+#### 🔑 Key Resource Details
+
+**Z-Anatomy (Best for 3D Models)**
+
+- GitHub: github.com/LluisV/Z-Anatomy
+- Blender files: [Google Drive link in repo](https://drive.google.com/drive/folders/18M7IuH2ai2fl21Ud0YH1mSlNEPPmcZzq)
+- FBX exports available
+- Full skeletal + muscular system
+- **License: CC BY-SA 4.0** - can use commercially with attribution + share-alike
+
+**Wikimedia Commons**
+
+- Category: Human anatomy (53 subcategories)
+- Includes: 3D models, SVG diagrams, Gray's Anatomy plates (public domain)
+- **License: Varies per file** - structured data is CC0, text is CC BY-SA
+
+**eSkeletons (University of Texas)**
+
+- Focus: Human + primate comparative anatomy
+- Interactive bone viewer
+- **License: CC BY-NC-SA 4.0** - non-commercial only
+
+#### 📋 Optimization Checklist
+
+- [ ] Download Z-Anatomy Blender files for skeletal reference
+- [ ] Extract proportional data (arm lengths, joint angles) from Z-Anatomy
+- [ ] Cross-reference with MediaPipe landmark indices
+- [ ] Create proportional validation script
+- [ ] Document arm/leg length ratios for normalization
+
+#### 🔗 Body Model Status (Andrew Entwistle)
+
+- **File:** AndrewEntwistle_Body_Model.ztl.zip (in git, too large for repo - 100MB+ limit)
+- **Status:** Insights extracted to [docs/BODY_MODEL_INSIGHTS.md](BODY_MODEL_INSIGHTS.md)
+- **License:** Domestika Terms (personal/non-commercial only)
+- **Action:** Contact creator for commercial rights if needed post-MVP
+- **Note:** The .ztl file was deleted from working directory (too large). Insights preserved in docs.
+
+---
 
 ### ✅ Completed
 
