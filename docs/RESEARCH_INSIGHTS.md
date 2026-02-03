@@ -213,42 +213,321 @@ Weights tuned on validation set:
 
 ---
 
-## 2. Additional Research Papers to Review
+## 2. ST-GCN: Spatial Temporal Graph Convolutional Networks
 
-### Cited by SAM-SLR (Relevant to Our Project)
+### Citation
 
-| Paper  | Topic                       | Citation              |
-| ------ | --------------------------- | --------------------- |
-| ST-GCN | Skeleton action recognition | Yan et al., AAAI 2018 |
-| AS-GCN | Latent joint connections    | Shi et al., 2019      |
-| MMPose | Whole-body pose estimation  | OpenMMLab, 2020       |
-| HRNet  | Pose keypoints              | Sun et al., CVPR 2019 |
+```bibtex
+@inproceedings{yan2018spatial,
+  title={Spatial Temporal Graph Convolutional Networks for Skeleton-Based Action Recognition},
+  author={Yan, Sijie and Xiong, Yuanjun and Lin, Dahua},
+  booktitle={AAAI Conference on Artificial Intelligence},
+  year={2018}
+}
+```
 
-### Papers to Investigate
+### Source Details
 
-1. **Spatial-temporal graph convolutional networks for sign language recognition**
-   - Cleison et al., ICANN 2019
-   - Directly relevant to our skeleton approach
+| Field           | Value                               |
+| --------------- | ----------------------------------- |
+| **arXiv ID**    | arXiv:1801.07455v2                  |
+| **Authors**     | Sijie Yan, Yuanjun Xiong, Dahua Lin |
+| **Institution** | The Chinese University of Hong Kong |
+| **Date**        | January 2018                        |
+| **Venue**       | AAAI 2018                           |
+| **Code**        | https://github.com/yysijie/st-gcn   |
 
-2. **Deep sign: Enabling robust statistical continuous sign language recognition**
-   - Koller et al., IJCV 2018
-   - Hybrid CNN-HMM approach
+### Legal Status ✅
 
-3. **Word-level deep sign language recognition from video**
-   - Li et al., WACV 2020
-   - Dataset comparison methods
+- **arXiv License:** Non-exclusive distribution license
+- **Can cite:** Yes
+- **Can use insights:** Yes
+
+### Key Technical Insights
+
+#### 1. Foundational Architecture
+
+**Core Contribution:** First to apply Graph Convolutional Networks to skeleton-based action recognition by modeling skeleton as a spatial-temporal graph.
+
+**Key Innovation:** Eliminates need for hand-crafted part assignment or traversal rules. The model automatically learns both spatial and temporal patterns from data.
+
+#### 2. Graph Construction (Figure 1 from paper)
+
+![ST-GCN Graph](st-gcn-graph.png)
+
+**Two types of edges:**
+
+- **Spatial edges ($E_S$):** Intra-body connections based on natural human skeleton
+- **Temporal edges ($E_F$):** Connect same joint across consecutive frames
+
+**Formal Definition:**
+
+- Graph $G = (V, E)$ with $N$ joints and $T$ frames
+- Node set: $V = \{v_{ti} | t = 1, ..., T, i = 1, ..., N\}$
+- $E_S = \{v_{ti}v_{tj} | (i,j) \in H\}$ where $H$ is human body structure
+- $E_F = \{v_{ti}v_{(t+1)i}\}$ connecting same joint over time
+
+#### 3. Partitioning Strategies (CRITICAL)
+
+Three strategies for constructing convolution kernels:
+
+| Strategy                  | K   | Description                        | Performance |
+| ------------------------- | --- | ---------------------------------- | ----------- |
+| **Uni-labeling**          | 1   | All neighbors share same label     | 19.3%       |
+| **Distance partitioning** | 2   | Root node (d=0) vs neighbors (d=1) | 29.1%       |
+| **Spatial configuration** | 3   | Root + centripetal + centrifugal   | **29.9%**   |
+
+**Spatial Configuration (Best):**
+
+- **Root (0):** The node itself
+- **Centripetal (1):** Nodes closer to skeleton gravity center
+- **Centrifugal (2):** Nodes farther from gravity center
+
+This strategy captures concentric vs eccentric motion patterns.
+
+#### 4. Learnable Edge Importance Weighting
+
+Added learnable mask **M** on every ST-GCN layer:
+
+- Scales contribution of neighboring nodes
+- Data-dependent attention mechanism
+- Improves recognition by ~1%
+
+**Result with importance weighting: 30.7% Top-1** (vs 29.9% without)
+
+#### 5. Network Architecture Details
+
+| Component               | Value                             |
+| ----------------------- | --------------------------------- |
+| **Layers**              | 9 ST-GCN units                    |
+| **Channels**            | 64 → 128 → 256 (3 layers each)    |
+| **Temporal kernel**     | 9 frames                          |
+| **Dropout**             | 0.5 after each unit               |
+| **Optimizer**           | SGD, lr=0.01, decay 0.1/10 epochs |
+| **Batch normalization** | Before each layer                 |
+| **ResNet mechanism**    | Applied on each unit              |
+
+#### 6. Data Augmentation
+
+**Random Affine Transformation:**
+
+- Random angle, translation, scaling
+- Interpolated across frames (simulates camera movement)
+
+**Random Fragment Sampling:**
+
+- Sample random fragments during training
+- Use all frames during testing
+
+**Global Pooling:** Handles variable-length sequences
+
+#### 7. Experimental Results
+
+**Kinetics Dataset (Table 1 - Ablation):**
+| Configuration | Top-1 | Top-5 |
+|---------------|-------|-------|
+| Baseline TCN | 20.3% | 40.0% |
+| Local Convolution | 22.0% | 43.2% |
+| Uni-labeling | 19.3% | 37.4% |
+| Distance Partitioning | 29.1% | 51.3% |
+| Spatial Configuration | 29.9% | 52.2% |
+| **ST-GCN + Importance** | **30.7%** | **52.8%** |
+
+**Kinetics Comparison (Table 2):**
+| Method | Top-1 | Top-5 |
+|--------|-------|-------|
+| RGB | 57.0% | 77.3% |
+| Optical Flow | 49.5% | 71.9% |
+| Feature Encoding | 14.9% | 25.8% |
+| Deep LSTM | 16.4% | 35.3% |
+| Temporal Conv. | 20.3% | 40.0% |
+| **ST-GCN** | **30.7%** | **52.8%** |
+
+**NTU-RGB+D Dataset (Table 3):**
+| Method | X-Sub | X-View |
+|--------|-------|--------|
+| Lie Group | 50.1% | 52.8% |
+| H-RNN | 59.1% | 64.0% |
+| Deep LSTM | 60.7% | 67.3% |
+| PA-LSTM | 62.9% | 70.3% |
+| ST-LSTM+TS | 69.2% | 77.7% |
+| Temporal Conv. | 74.3% | 83.1% |
+| C-CNN + MTLN | 79.6% | 84.8% |
+| **ST-GCN** | **81.5%** | **88.3%** |
+
+#### 8. Key Finding: Skeleton Complements RGB
+
+**Table 5 - Ensemble Performance:**
+| Streams | Accuracy |
+|---------|----------|
+| RGB only | 70.3% |
+| Flow only | 51.0% |
+| ST-GCN only | 30.7% |
+| RGB + Flow | 71.1% |
+| **RGB + ST-GCN** | **71.2%** |
+| **RGB + Flow + ST-GCN** | **71.7%** |
+
+**Key Insight:** Adding ST-GCN to RGB improves by +0.9%, even better than optical flow (+0.8%). Skeleton provides complementary information!
+
+### Application to HandInHand
+
+#### High Priority
+
+1. **Spatial configuration partitioning** - Use centripetal/centrifugal distinction
+2. **Learnable edge weighting** - Joints have different importance for different signs
+3. **9-layer architecture** - If upgrading to neural network
+
+#### Medium Priority
+
+4. **Random affine augmentation** - Camera movement simulation
+5. **Global pooling** - Handle variable-length signs
+
+#### Key Takeaways
+
+- ST-GCN is the **foundational paper** for skeleton-based action recognition
+- Spatial configuration partitioning outperforms simpler strategies
+- Skeleton complements RGB modality (ensemble improves accuracy)
+- Architecture validated on 400 action classes and 56,000 clips
+
+---
+
+## 3. 2s-AGCN: Two-Stream Adaptive GCN
+
+### Citation
+
+```bibtex
+@inproceedings{shi2019two,
+  title={Two-Stream Adaptive Graph Convolutional Networks for Skeleton-Based Action Recognition},
+  author={Shi, Lei and Zhang, Yifan and Cheng, Jian and Lu, Hanqing},
+  booktitle={CVPR},
+  pages={12026--12035},
+  year={2019}
+}
+```
+
+### Source Details
+
+| Field           | Value                                        |
+| --------------- | -------------------------------------------- |
+| **arXiv ID**    | arXiv:1805.07694v3                           |
+| **Authors**     | Lei Shi, Yifan Zhang, Jian Cheng, Hanqing Lu |
+| **Institution** | Chinese Academy of Sciences                  |
+| **Date**        | July 2019                                    |
+| **Venue**       | CVPR 2019                                    |
+
+### Legal Status ✅
+
+- **arXiv License:** Non-exclusive distribution license
+- **Can cite:** Yes
+- **Can use insights:** Yes
+
+### Key Technical Insights
+
+**Problem with ST-GCN:**
+
+- Fixed graph topology set manually
+- Same topology across all layers and samples
+- Only uses first-order information (joint positions)
+
+**Solution - Adaptive Graph:**
+
+- Graph topology learned by backpropagation (end-to-end)
+- Data-driven method increases model flexibility
+- Can be uniform or sample-specific
+
+**Two-Stream Architecture:**
+| Stream | Data | Description |
+|--------|------|-------------|
+| **Joint stream** | $(x, y, z)$ coordinates | First-order position info |
+| **Bone stream** | $(x_j - x_i, y_j - y_i, z_j - z_i)$ | Second-order direction/length info |
+
+**Key Insight:** Bone vectors (second-order info) are "naturally more informative and discriminative for action recognition."
+
+**Performance:** Significant margin over state-of-the-art on NTU-RGBD and Kinetics-Skeleton.
+
+**Application to HandInHand:**
+
+- **CRITICAL:** Confirms importance of bone vectors (already noted in SAM-SLR)
+- Learnable graph topology could help for sign language variations
+- Two-stream approach validated by multiple papers now
+
+---
+
+## 4. Cleison et al.: ST-GCN for Sign Language Recognition
+
+### Citation
+
+```bibtex
+@inproceedings{amorim2019spatial,
+  title={Spatial-Temporal Graph Convolutional Networks for Sign Language Recognition},
+  author={de Amorim, Cleison Correia and Macêdo, David and Zanchettin, Cleber},
+  booktitle={International Conference on Artificial Neural Networks (ICANN)},
+  year={2019},
+  publisher={Springer}
+}
+```
+
+### Source Details
+
+| Field           | Value                                                      |
+| --------------- | ---------------------------------------------------------- |
+| **arXiv ID**    | arXiv:1901.11164v2                                         |
+| **Authors**     | Cleison Correia de Amorim, David Macêdo, Cleber Zanchettin |
+| **Institution** | Federal University of Pernambuco, Brazil                   |
+| **Date**        | May 2020 (v2)                                              |
+| **Venue**       | ICANN 2019                                                 |
+| **DOI**         | 10.1007/978-3-030-30493-5_59                               |
+
+### Legal Status ✅
+
+- **arXiv License:** Non-exclusive distribution license
+- **Can cite:** Yes
+- **Can use insights:** Yes
+
+### Key Technical Insights
+
+**Significance:** Direct application of ST-GCN to sign language recognition (not just general action recognition).
+
+**Contributions:**
+
+1. Adapted ST-GCN architecture specifically for sign language
+2. Created new skeleton dataset from ASLLVD (American Sign Language Lexicon Video Dataset)
+3. Demonstrated graphs capture sign language dynamics in spatial and temporal dimensions
+4. Addressed complex aspects of sign language movement
+
+**Dataset Contribution:** Human skeleton dataset for sign language based on ASLLVD available for future research.
+
+**Application to HandInHand:**
+
+- **Validates our approach:** Skeleton-based methods work for sign language
+- Dataset could be useful for benchmarking
+- Directly applicable architecture for neural network upgrade path
+
+---
+
+## 5. Papers Still Pending (Paywalled/Not Yet Reviewed)
+
+| Paper                                 | Status       | Notes                   |
+| ------------------------------------- | ------------ | ----------------------- |
+| Deep Sign (Koller et al., IJCV 2018)  | ⏳ Pending   | Hybrid CNN-HMM approach |
+| Word-level SLR (Li et al., WACV 2020) | ⏳ Pending   | Dataset comparison      |
+| ScienceDirect S0167865522003804       | ❌ Paywalled | Could not access        |
+| ScienceDirect S1877050915021675       | ❌ Paywalled | Could not access        |
 
 ---
 
 ## Legal Summary
 
-| Resource      | License      | Citation OK | Use Insights     | Commercial           |
-| ------------- | ------------ | ----------- | ---------------- | -------------------- |
-| SAM-SLR Paper | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
-| SAM-SLR Code  | GitHub       | ✅ Yes      | ⚠️ Check license | ⚠️ Check license     |
-| OpenStax A&P  | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
-| Z-Anatomy     | CC BY-SA 4.0 | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
-| Physio-Pedia  | CC BY-SA     | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
+| Resource       | License      | Citation OK | Use Insights     | Commercial           |
+| -------------- | ------------ | ----------- | ---------------- | -------------------- |
+| SAM-SLR Paper  | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| ST-GCN Paper   | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| 2s-AGCN Paper  | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| Cleison et al. | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| SAM-SLR Code   | GitHub       | ✅ Yes      | ⚠️ Check license | ⚠️ Check license     |
+| OpenStax A&P   | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
+| Z-Anatomy      | CC BY-SA 4.0 | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
+| Physio-Pedia   | CC BY-SA     | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
 
 ---
 

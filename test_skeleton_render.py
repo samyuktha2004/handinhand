@@ -8,7 +8,7 @@ import json
 import numpy as np
 import cv2
 from pathlib import Path
-from skeleton_drawer import SkeletonDrawer, extract_landmarks_from_signature
+from skeleton_renderer import SkeletonRenderer, extract_landmarks_as_dicts
 
 def test_render():
     # Load signature
@@ -22,8 +22,8 @@ def test_render():
     
     print(f"✓ Loaded signature: {sig['sign']} ({len(sig['pose_data'])} frames)")
     
-    # Extract landmarks
-    frames = extract_landmarks_from_signature(sig, frame_width=640, frame_height=480)
+    # Extract landmarks (as dict format)
+    frames = extract_landmarks_as_dicts(sig, frame_width=640, frame_height=480)
     print(f"✓ Extracted {len(frames)} frames")
     
     # Get first frame
@@ -36,12 +36,12 @@ def test_render():
             data = frame_0[key]
             print(f"  {key}: {data.shape[0]} points, range X: {data[:, 0].min():.0f}-{data[:, 0].max():.0f}, Y: {data[:, 1].min():.0f}-{data[:, 1].max():.0f}")
     
-    # Try to draw on blank canvas
+    # Try to draw on blank canvas using new SkeletonRenderer
     print("\nAttempting to render...")
-    blank = np.zeros((480, 640, 3), dtype=np.uint8)
+    renderer = SkeletonRenderer()
     
     try:
-        rendered = SkeletonDrawer.draw_skeleton(blank, frame_0, lang="ASL", show_joints=True)
+        rendered = renderer.draw(frame_0, show_reference=False)
         
         # Count non-zero pixels (skeleton drawn)
         non_zero = np.count_nonzero(rendered)

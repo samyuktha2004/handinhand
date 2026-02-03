@@ -16,7 +16,7 @@ import json
 import numpy as np
 from pathlib import Path
 from scipy.spatial.distance import cosine
-from skeleton_drawer import extract_landmarks_from_signature
+from skeleton_renderer import extract_landmarks_as_dicts
 from utils.registry_loader import RegistryLoader
 
 
@@ -30,7 +30,7 @@ def load_signature(lang: str, sig_name: str):
     with open(sig_path) as f:
         sig = json.load(f)
     
-    frames = extract_landmarks_from_signature(sig)
+    frames = extract_landmarks_as_dicts(sig)
     return {
         'sig': sig,
         'frames': frames,

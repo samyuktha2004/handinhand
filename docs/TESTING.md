@@ -2,13 +2,15 @@
 
 Quick reference for manually testing and running the sign language recognition system.
 
+**Last Verified:** 2026-02-03 (All commands tested ✅)
+
 ## Skeleton Viewer (skeleton_debugger.py)
 
 ### Dual-Display Mode (ASL vs BSL)
 
 Compare two signatures side-by-side with synchronized frame navigation.
 
-**Using full paths (recommended) NOT FUNCTIONAL CHECK THIS:**
+**Using full paths (WORKING ✅):**
 
 ```bash
 # Hello sign (ASL vs BSL)
@@ -24,7 +26,7 @@ python skeleton_debugger.py --sig1 assets/signatures/asl/you_0.json --sig2 asset
 python skeleton_debugger.py --sig1 assets/signatures/asl/go_0.json --sig2 assets/signatures/bsl/go.json --dual
 ```
 
-**Using signature names (shorthand) WORKING:**
+**Using signature names (shorthand) (WORKING ✅):**
 
 ```bash
 # Hello sign (ASL vs BSL)

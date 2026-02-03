@@ -35,7 +35,15 @@ import argparse
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from skeleton_drawer import SkeletonDrawer, extract_landmarks_from_signature
+# Use new simpler skeleton renderer with compatibility layer
+from skeleton_renderer import (
+    SkeletonDrawerCompat as SkeletonDrawer, 
+    extract_landmarks_from_signature, 
+    ReferenceBody, 
+    CENTER_X, 
+    CENTER_Y, 
+    REFERENCE_SHOULDER_WIDTH
+)
 
 
 class SkeletonDebugger:
@@ -84,9 +92,25 @@ class SkeletonDebugger:
         # DEFAULT: normalize_display OFF for partial skeletons
         self.normalize_display = False
         
+        # Track previous frame's normalized landmarks for fallback
+        self.prev_landmarks1 = None
+        self.prev_landmarks2 = None
+        
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
         self.height = self.sig1_dict.get('metadata', {}).get('frame_height', 480)
+    
+    def _has_landmarks(self, lm) -> bool:
+        """Check if landmarks data is valid (not None and has content)."""
+        if lm is None:
+            return False
+        if isinstance(lm, np.ndarray):
+            return lm.size > 0
+        if isinstance(lm, dict):
+            return len(lm) > 0
+        if isinstance(lm, list):
+            return len(lm) > 0
+        return False
     
     def _load_signature(self, path: str) -> Dict:
         """Load signature JSON file."""
@@ -98,31 +122,33 @@ class SkeletonDebugger:
         return np.zeros((self.height, self.width, 3), dtype=np.uint8)
     
     def _get_current_landmarks(self, frame_idx: int, sig_frames: List) -> Dict:
-        """Get landmarks for frame, or empty dict if out of range."""
-        if 0 <= frame_idx < len(sig_frames):
-            landmarks = sig_frames[frame_idx]
-            
-            if self.normalize_display:
-                # Apply body-centric normalization for visual comparison
-                landmarks = SkeletonDrawer.normalize_landmarks(landmarks)
-                
-                # Translate back to frame center for visibility
-                center_x = self.width // 2
-                center_y = self.height // 2
-                
-                normalized = {}
-                for key in landmarks:
-                    if landmarks[key] is not None:
-                        points = landmarks[key].copy()
-                        points[:, 0] += center_x  # Translate X
-                        points[:, 1] += center_y  # Translate Y
-                        normalized[key] = points
-                
-                return normalized
-            else:
-                return landmarks
+        """Get landmarks for frame. Freeze on last frame if out of range."""
+        # Clamp to valid range - freeze on last frame when video ends
+        if len(sig_frames) == 0:
+            return {}
         
-        return {}
+        clamped_idx = max(0, min(frame_idx, len(sig_frames) - 1))
+        landmarks = sig_frames[clamped_idx]
+        
+        if self.normalize_display:
+            # Apply body-centric normalization for visual comparison
+            landmarks = SkeletonDrawer.normalize_landmarks(landmarks)
+            
+            # Translate back to frame center for visibility
+            center_x = self.width // 2
+            center_y = self.height // 2
+            
+            normalized = {}
+            for key in landmarks:
+                if landmarks[key] is not None:
+                    points = landmarks[key].copy()
+                    points[:, 0] += center_x  # Translate X
+                    points[:, 1] += center_y  # Translate Y
+                    normalized[key] = points
+            
+            return normalized
+        else:
+            return landmarks
     
     def _draw_frame_info(self, frame: np.ndarray, frame_num: int, total: int, 
                         sig_name: str, lang: str) -> None:
@@ -202,7 +228,7 @@ class SkeletonDebugger:
         h, w = frame.shape[:2]
         
         frame_diff = len(self.frames1) - len(self.frames2)
-        status = "✓ SYNC" if frame_diff == 0 else f"⚠ DESYNC ({frame_diff} frames)"
+        status = "SYNC" if frame_diff == 0 else f"DESYNC ({frame_diff} frames)"
         color = (0, 255, 0) if frame_diff == 0 else (0, 165, 255)
         
         cv2.putText(frame, status, (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX,
@@ -232,15 +258,28 @@ class SkeletonDebugger:
         """
         frame_blank = self._create_blank_frame()
         
-        # Show sig1
+        # Get landmarks FIRST
         lm = self._get_current_landmarks(self.current_frame, self.frames1)
         lang = self.lang1
         sig_name = self.sig1_path.stem
         total = len(self.frames1)
         
-        if lm:
+        # Normalize landmarks to reference body proportions
+        lm_normalized = None
+        if self._has_landmarks(lm):
+            lm_normalized = SkeletonDrawer.normalize_to_reference(
+                lm, 
+                last_frame_landmarks=self.prev_landmarks1
+            )
+            self.prev_landmarks1 = lm_normalized  # Save for next frame
+        
+        # Draw reference body canvas WITH landmarks for dynamic head/neck
+        frame_blank = ReferenceBody.draw_canvas(frame_blank, landmarks=lm_normalized)
+        
+        # Draw skeleton
+        if self._has_landmarks(lm_normalized):
             frame_blank = SkeletonDrawer.draw_skeleton(
-                frame_blank, lm, lang=lang,
+                frame_blank, lm_normalized, lang=lang,
                 show_joints=self.show_joints
             )
         
@@ -263,20 +302,40 @@ class SkeletonDebugger:
         frame1_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         frame2_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         
-        # Get landmarks for current frame
+        # Get landmarks for current frame FIRST
         lm1 = self._get_current_landmarks(self.current_frame, self.frames1)
         lm2 = self._get_current_landmarks(self.current_frame, self.frames2)
         
-        # Normalize both to standard bounding box (makes them same relative size)
-        if lm1:
-            lm1_normalized = self._normalize_landmarks_to_bbox(lm1, target_width=0.7)
+        # Normalize to reference body proportions (zoom-invariant, consistent scaling)
+        lm1_normalized = None
+        lm2_normalized = None
+        
+        if self._has_landmarks(lm1):
+            lm1_normalized = SkeletonDrawer.normalize_to_reference(
+                lm1,
+                last_frame_landmarks=self.prev_landmarks1
+            )
+            self.prev_landmarks1 = lm1_normalized
+        
+        if self._has_landmarks(lm2):
+            lm2_normalized = SkeletonDrawer.normalize_to_reference(
+                lm2,
+                last_frame_landmarks=self.prev_landmarks2
+            )
+            self.prev_landmarks2 = lm2_normalized
+        
+        # Draw reference body canvas WITH landmarks for dynamic head/neck
+        frame1_blank = ReferenceBody.draw_canvas(frame1_blank, landmarks=lm1_normalized)
+        frame2_blank = ReferenceBody.draw_canvas(frame2_blank, landmarks=lm2_normalized)
+        
+        # Draw skeletons
+        if self._has_landmarks(lm1_normalized):
             frame1_blank = SkeletonDrawer.draw_skeleton(
                 frame1_blank, lm1_normalized, lang=self.lang1,
                 show_joints=self.show_joints
             )
         
-        if lm2:
-            lm2_normalized = self._normalize_landmarks_to_bbox(lm2, target_width=0.7)
+        if self._has_landmarks(lm2_normalized):
             frame2_blank = SkeletonDrawer.draw_skeleton(
                 frame2_blank, lm2_normalized, lang=self.lang2,
                 show_joints=self.show_joints
@@ -284,7 +343,7 @@ class SkeletonDebugger:
         
         # Add info (normalized size)
         # Frame info with completion indicator for lang1
-        lang1_indicator = "⏹" if self.completed_lang1 else "▶"
+        lang1_indicator = "[DONE]" if self.completed_lang1 else "[PLAY]"
         cv2.putText(frame1_blank, f"{lang1_indicator} {self.lang1} | Frame {self.current_frame + 1}/{len(self.frames1)}", 
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         cv2.putText(frame1_blank, f"Sig: {self.sig1_path.stem}", 
@@ -296,7 +355,7 @@ class SkeletonDebugger:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
         
         # Frame info with completion indicator for lang2
-        lang2_indicator = "⏹" if self.completed_lang2 else "▶"
+        lang2_indicator = "[DONE]" if self.completed_lang2 else "[PLAY]"
         cv2.putText(frame2_blank, f"{lang2_indicator} {self.lang2} | Frame {self.current_frame + 1}/{len(self.frames2)}", 
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         cv2.putText(frame2_blank, f"Sig: {self.sig2_path.stem}", 
@@ -315,7 +374,7 @@ class SkeletonDebugger:
         self._draw_normalization_info(combined)
         
         # Control help (smaller text to fit)
-        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit | ⚠️ HIGH CPU"
+        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit | HIGH CPU"
         cv2.putText(combined, help_text, (10, combined.shape[0] - 5),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
         
@@ -339,7 +398,7 @@ class SkeletonDebugger:
             sig_name = self.sig2_path.stem
             total = len(self.frames2)
         
-        if lm:
+        if self._has_landmarks(lm):
             frame_blank = SkeletonDrawer.draw_skeleton(
                 frame_blank, lm, lang=lang,
                 show_joints=self.show_joints
@@ -407,7 +466,7 @@ class SkeletonDebugger:
                 self.is_playing = True
                 self.completed_lang1 = False
                 self.completed_lang2 = False
-                print("▶ Replay from start")
+                print("[PLAY] Replay from start")
             
             # Auto-advance if playing
             if self.is_playing:
@@ -423,7 +482,7 @@ class SkeletonDebugger:
                 else:
                     # Both videos have finished
                     self.is_playing = False
-                    print(f"⏹ Playback complete")
+                    print(f"[DONE] Playback complete")
         
         cv2.destroyAllWindows()
         print("\nDebugger closed.")
@@ -456,10 +515,24 @@ Examples:
     
     args = parser.parse_args()
     
-    # Build paths
+    # Build paths - detect if full path or shorthand name provided
     assets_dir = Path('assets/signatures')
-    sig1_path = assets_dir / args.lang1.lower() / f"{args.sig1}.json"
-    sig2_path = assets_dir / args.lang2.lower() / f"{args.sig2}.json"
+    
+    # Handle sig1 path
+    if args.sig1.endswith('.json') or '/' in args.sig1:
+        # Full path provided
+        sig1_path = Path(args.sig1)
+    else:
+        # Shorthand name - build full path
+        sig1_path = assets_dir / args.lang1.lower() / f"{args.sig1}.json"
+    
+    # Handle sig2 path
+    if args.sig2.endswith('.json') or '/' in args.sig2:
+        # Full path provided
+        sig2_path = Path(args.sig2)
+    else:
+        # Shorthand name - build full path
+        sig2_path = assets_dir / args.lang2.lower() / f"{args.sig2}.json"
     
     # Verify paths exist
     if not sig1_path.exists():

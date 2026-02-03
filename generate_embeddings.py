@@ -47,6 +47,7 @@ class EmbeddingGenerator:
 
     def __init__(self):
         """Initialize generator."""
+        self.embeddings_dir = Path("assets/embeddings")
         self.loader = RegistryLoader()
         self.concept_registry = self.loader.get_concept_registry()
         self.asl_registry = self.loader.get_language_registry('asl')
@@ -54,6 +55,12 @@ class EmbeddingGenerator:
         self.embeddings_asl = {}
         self.embeddings_bsl = {}
         self._ensure_directories()
+
+    def _ensure_directories(self):
+        """Ensure embedding output directories exist."""
+        for subdir in ['asl', 'bsl', 'concept']:
+            path = self.embeddings_dir / subdir
+            path.mkdir(parents=True, exist_ok=True)
 
     def _load_signature(self, sig_file: str) -> Optional[Dict]:
         """Load signature JSON file."""
@@ -103,15 +110,20 @@ class EmbeddingGenerator:
         # Concatenate all landmark groups: pose + left_hand + right_hand + face
         for key in ['pose', 'left_hand', 'right_hand', 'face']:
             if key in frame_data and frame_data[key]:
-                landmarks.extend(frame_data[key])
+                for pt in frame_data[key]:
+                    # Ensure 3D coordinates (add z=0 if missing)
+                    if len(pt) == 2:
+                        landmarks.append([pt[0], pt[1], 0.0])
+                    else:
+                        landmarks.append(pt[:3])  # Take only first 3
+        
+        if len(landmarks) == 0:
+            return np.zeros(52 * 3, dtype=np.float32)  # 52 points * 3 coords
         
         landmarks = np.array(landmarks, dtype=np.float32)
         
-        if len(landmarks) == 0:
-            return np.zeros(52, dtype=np.float32)  # 52 = 6 pose + 21*2 hands + 4 face
-        
         # Flatten and normalize
-        landmarks_flat = self._normalize_landmarks(landmarks.reshape(-1, 3))
+        landmarks_flat = self._normalize_landmarks(landmarks)
         return landmarks_flat.flatten().astype(np.float32)
 
     def _compute_signature_embedding(self, sig_file: str) -> Optional[np.ndarray]:

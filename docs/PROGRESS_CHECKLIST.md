@@ -1,106 +1,94 @@
 # HandInHand Progress Checklist
 
-**Last Updated**: 2026-02-02
+**Last Updated**: 2026-02-03
 
 ---
 
-## Open-Source Anatomy Resources (Feb 2, 2026)
+## Reference Sources & Licensing
 
-### Optimization Checklist
+| Source                                     | License           | Can Use Code?              | Can Use Insights?              | Status      |
+| ------------------------------------------ | ----------------- | -------------------------- | ------------------------------ | ----------- |
+| **MediaPipe** (Google)                     | Apache 2.0        | ✅ Yes (with attribution)  | ✅ Yes                         | ✅ Reviewed |
+| **pose-format**                            | MIT               | ✅ Yes (with attribution)  | ✅ Yes                         | ✅ Reviewed |
+| **signwriting**                            | MIT               | ✅ Yes (with attribution)  | ✅ Yes                         | ⬜ Future   |
+| **sign/translate**                         | CC BY-NC-SA 4.0   | ⚠️ Non-commercial only     | ✅ Insights only               | ✅ Reviewed |
+| **RWTH-PHOENIX**                           | Academic          | ⬜ Check license           | ✅ Yes (cite paper)            | ⬜ Future   |
+| **ASL-LEX**                                | Academic          | ⬜ Check license           | ✅ Yes                         | ⬜ Future   |
+| **AndrewEntwistle Body Model** (Domestika) | Personal Use Only | ❌ No (proprietary ZBrush) | ✅ Architectural patterns only | ✅ Reviewed |
 
-- [ ] Download Z-Anatomy Blender files for skeletal reference (CC BY-SA 4.0)
-- [ ] Extract proportional data (arm lengths, joint angles) from Z-Anatomy
-- [ ] Cross-reference with MediaPipe landmark indices
-- [ ] Create proportional validation script
-- [ ] Document arm/leg length ratios for normalization
+### Future Research TODOs
 
-### Verified Resources (No Commercial Restrictions)
+- **Body Model Integration (Post-MVP):** If advancing to realistic body meshes, contact Andrew Entwistle or Domestika (legal@domestika.org) for commercial usage rights. See [BODY_MODEL_INSIGHTS.md](BODY_MODEL_INSIGHTS.md) for details and [source link](https://www.domestika.org/en/blog/11350-free-library-of-resources-to-help-take-your-creature-design-to-the-next-level?exp_set=1).
 
-| Resource             | License       | Use              |
-| -------------------- | ------------- | ---------------- |
-| Z-Anatomy            | CC BY-SA 4.0  | 3D models ✅     |
-| Open Anatomy Project | Open (NIH)    | Brain atlases ✅ |
-| AnatomyTOOL          | CC (per-item) | Bone scans ✅    |
-| Wikimedia Commons    | CC0/CC BY-SA  | SVG diagrams ✅  |
-| OpenStax A&P         | CC BY 4.0     | Textbook ✅      |
+## Development Strategy: Skeleton-First
 
-See [BODY_MODEL_INSIGHTS.md](BODY_MODEL_INSIGHTS.md) for Andrew Entwistle model analysis.
+**Principle:** Perfect the skeleton visualizer before adding avatars. The avatar is just "skin on skeleton."
 
----
+- ✅ Recognition logic 100% independent of rendering
+- ✅ Faster iteration (no VRM/3D complexity)
+- ✅ Easier debugging (see exactly which landmarks are wrong)
 
-## Joint Anatomy Research (Feb 2, 2026) ✅ NEW
-
-### Key Insights Documented
-
-See [JOINT_ANATOMY_INSIGHTS.md](JOINT_ANATOMY_INSIGHTS.md) for full documentation.
-
-| Joint Type      | DOF | Application                                  |
-| --------------- | --- | -------------------------------------------- |
-| Ball-and-Socket | 3   | Shoulder - maximum freedom                   |
-| Hinge           | 1   | Elbow, finger IP - flex/extend only          |
-| Saddle          | 2   | **Thumb CMC** - unique opposition capability |
-| Condyloid       | 2   | Wrist, knuckles - 2-axis movement            |
-
-### Implementation Checklist
-
-- [ ] Implement elbow ROM validation (max 160° flexion, 10° hyperextension)
-- [ ] Implement wrist ROM validation (±50° ulnar, ±30° radial)
-- [ ] Implement finger MCP/PIP/DIP ROM validation
-- [ ] Add thumb special handling (saddle joint allows opposition)
-- [ ] Implement thumb opposition detection for fingerspelling
-- [ ] Add joint validity scoring function
-- [ ] Integrate frame rejection based on validity score
-- [ ] Implement joint coupling constraints (wrist-finger, finger-finger)
-
-### Critical Finding: Thumb vs. Fingers
-
-The thumb has a **saddle joint** at the CMC (carpometacarpal) level, enabling:
-
-- **Opposition** - moving perpendicular to palm (other fingers cannot)
-- **Greater movement range** - must allow wider angles for thumb landmarks
-- **Different validation rules** - thumb should not be constrained like other fingers
+| Risk                                 | Mitigation                                                  |
+| ------------------------------------ | ----------------------------------------------------------- |
+| Looks "unfinished" to stakeholders   | Label as "Developer Mode" / "Debug View" in UI              |
+| Facial expressions harder to read    | Use landmark shapes + color coding (see Sign-MT approach)   |
+| Avatar integration surprises         | Define adapter interface early (landmarks → bone rotations) |
+| Occlusion/foreshortening differences | Test with 2D + 3D views before avatar integration           |
 
 ---
 
-## Academic Research (Feb 2, 2026) ✅ NEW
+## Roadmap Overview
 
-### SAM-SLR Paper Analysis
+```
+Phase 1: Perfect the skeleton ◄── YOU ARE HERE
+├── Fix landmark connectivity
+├── Draw all body segments properly
+├── Ensure hands attach to wrists
+├── Add Sign-MT style visualization
+└── Smooth temporal jitter
 
-See [RESEARCH_INSIGHTS.md](RESEARCH_INSIGHTS.md) for full documentation.
+Phase 2: Bidirectional translation
+├── ASL ↔ BSL concept mapping
+├── Embedding interpolation
+└── Real-time pipeline
 
-**Source:** Jiang et al., arXiv:2103.08833v5 (2021) - 1st place CVPR-21 SLR Challenge  
-**License:** arXiv non-exclusive license ✅ (can cite and use insights)
-
-| Finding                                   | Impact          | Priority  |
-| ----------------------------------------- | --------------- | --------- |
-| **Graph Reduction** (133→27 nodes)        | +31% accuracy   | 🔴 High   |
-| Multi-stream (Joint+Bone+Motion)          | +0.43% accuracy | 🟡 Medium |
-| Data Augmentation (jitter, scale, rotate) | Robustness      | 🟡 Medium |
-| Label Smoothing                           | +1% accuracy    | 🟢 Low    |
-
-### Key Implementation Tasks
-
-- [ ] Test graph reduction (52 → ~27 key nodes)
-- [ ] Add bone vector features (parent→child direction)
-- [ ] Add jittering augmentation to signatures
-- [ ] Add scaling augmentation (body size variation)
-- [ ] Consider motion features (temporal differences)
-
-### Critical Insight: Skeleton > RGB
-
-Skeleton-based methods (95.45%) **outperform** raw RGB (94.77%) while being:
-
-- More computationally efficient
-- More robust to background variation
-- Independent of lighting conditions
-
-**Validates our skeleton-based approach!**
+Phase 3: Avatar = "apply skin"
+├── VRM loader
+├── Retarget landmarks → bone rotations
+└── Multiple avatar support
+```
 
 ---
 
-## Current Phase: Phase 2 - Reference Body & Scaling
+## Current Phase: Landmark Quality Filtering
 
-### Phase 1: Core Recognition ✅ COMPLETE
+### Landmark Quality Filtering 🔄 IN PROGRESS
+
+#### Phase 1: Visibility Filtering ✅ COMPLETE
+
+- [x] Add `VISIBILITY_THRESHOLD = 0.5` constant
+- [x] Modify `extract_landmarks()` to check visibility
+- [x] Mark low-visibility landmarks as `[0,0,0]`
+- [x] Add `is_frame_quality_good()` method
+- [x] Add `check_skeleton_connectivity()` method
+- [x] Add window quality gate in `compute_embedding()` (70% good frames)
+- [x] Use masked averaging (ignore zeros)
+- [ ] Update `generate_embeddings.py` with same logic (optional)
+
+#### Phase 2: Skeleton Connectivity ✅ COMPLETE
+
+- [x] Define `LIMB_CONNECTIONS` constant (5 limb pairs)
+- [x] Add "both endpoints valid" check per limb
+- [x] Window quality gate integrated
+
+#### Phase 3: Motion Validation (Future)
+
+- [ ] Add velocity clipping on 3D coordinates
+- [ ] Optional: Proportional neighbor distance check
+
+---
+
+## Core Recognition ✅ COMPLETE
 
 - [x] MediaPipe landmark extraction
 - [x] Signature storage (JSON format)
@@ -108,12 +96,23 @@ Skeleton-based methods (95.45%) **outperform** raw RGB (94.77%) while being:
 - [x] Recognition engine (Cosine similarity)
 - [x] Recognition quality: **0.7339 average** ✅
 
-### Phase 2: Reference Body & Scaling 🔄 IN PROGRESS
+---
+
+## Recognition Engine Refactor ✅ COMPLETE
+
+- [x] Created `recognition_base.py` (shared logic)
+- [x] Refactored `recognition_engine.py` (524 → 183 lines)
+- [x] Refactored `recognition_engine_ui.py` (850 → 561 lines)
+- [x] Total: 1373 → 1011 lines (26% reduction)
+
+---
+
+## Phase 2: Reference Body & Scaling ✅ MOSTLY COMPLETE
 
 - [x] Create reference body visualization (`show_reference_body.py`)
 - [x] Define body proportions (SHOULDER_WIDTH=100, ARM_LENGTH=100)
 - [x] Implement 21-point hand structure (MediaPipe compatible)
-- [x] Add palm connections (MCP joints: 5→9→13→17)
+- [ ] Add palm connections (MCP joints: 5→9→13→17)
 - [x] Fix thumb positions (correct biological sides)
 - [x] Fix arm ratios (anatomically accurate: upper 55%, forearm 45%)
 - [x] Add "chest" position for signing near face/body
@@ -147,6 +146,184 @@ Skeleton-based methods (95.45%) **outperform** raw RGB (94.77%) while being:
 - [ ] Add 468 face landmarks
 - [ ] Assess impact on recognition
 - [ ] Palm orientation indicator (Z-coordinate)
+
+---
+
+## Skeleton Visualizer Improvements ✅ COMPLETE (Rewrite)
+
+**Last Updated:** 2026-02-03
+
+### MAJOR REFACTOR: skeleton_renderer.py (NEW)
+
+Created simpler architecture replacing complex `skeleton_drawer.py`:
+
+**Design Principle:**
+
+- Reference body provides FIXED PROPORTIONS (never scaled)
+- Landmarks provide POSITIONS/ANGLES
+- We MOVE reference body parts to match detected angles
+- Missing parts use reference body defaults
+- Out-of-bounds or biologically impossible points are flagged
+
+**Key Changes:**
+
+- [x] Created `skeleton_renderer.py` - simpler, cleaner approach
+- [x] Fixed reference body constants (SHOULDER=100px, UPPER_ARM=55px, LOWER_ARM=45px)
+- [x] Added `SkeletonDrawerCompat` compatibility layer for existing code
+- [x] Updated `skeleton_debugger.py` to use new renderer
+- [x] Updated `test_asl_vs_bsl.py` and `test_skeleton_render.py`
+- [x] Generated 16 visual test images (all 4 signs × 2 languages × 2 frames)
+
+**Previous Bugs - ALL RESOLVED:**
+
+- [x] **Blue stub on missing hand** - FIXED
+  - New renderer uses proper neutral hand with visible fingers
+- [x] **Hand scaling inconsistency** - FIXED
+  - New renderer uses FIXED hand proportions (never scales hands relative to body)
+  - Finger lengths are constant, only ANGLES change based on detected data
+
+- [x] **Dynamic neck connection** - FIXED
+  - Head/neck positioned relative to shoulder center with fixed proportions
+- [x] **Neutral rest hand for fallback** - FIXED
+  - `_draw_neutral_hand()` generates anatomically correct relaxed hand
+
+### Files Changed:
+
+| File                        | Change                                |
+| --------------------------- | ------------------------------------- |
+| `skeleton_renderer.py`      | NEW - simpler reference body approach |
+| `skeleton_debugger.py`      | Updated imports to use new renderer   |
+| `test_asl_vs_bsl.py`        | Updated imports                       |
+| `test_skeleton_render.py`   | Updated to use new renderer           |
+| `test_skeleton_renderer.py` | NEW - comprehensive visual tests      |
+
+### Visual Test Results (assets/test_render/):
+
+- ASL_hello_0: ✓ Both hands visible
+- BSL_hello: ✓ Both hands visible
+- ASL_go_0: ✓ Both hands visible
+- BSL_go: ✓ Both hands visible
+- ASL_where_0: ✓ Fallback hands working
+- BSL_where: ✓ Both hands visible
+- ASL_you_0: ✓ Right hand visible, left fallback
+- BSL_you: ✓ Both hands visible
+
+---
+
+## Previous Issues (HISTORICAL - RESOLVED)
+
+### Critical Bugs (Priority 0 - BLOCKING) - ALL RESOLVED
+
+- [x] **Blue stub on missing hand** - FIXED (2026-02-03)
+  - Root cause: `generate_neutral_hand()` had finger_spacing too small (6px)
+  - Hand was only 25px wide, appeared collapsed
+  - Fix: Created new skeleton_renderer.py with proper proportions
+- [x] **Hand scaling inconsistency** - FIXED (2026-02-03)
+  - Root cause: Old code applied same scale factor to hands as body
+  - When shoulder width is small, scale factor is large, making hands massive
+  - Fix: New renderer uses FIXED hand proportions (no scaling)
+
+### Completed Fixes ✅
+
+- [x] **Dynamic neck connection** - Connect shoulder_midpoint → actual face landmark
+  - Implemented in `ReferenceBody.draw_canvas()` with landmarks parameter
+  - Fallback chain: nose_tip(1) → glabella(168) → upper_lip(0) → chin(152)
+  - Dynamic head position based on face landmarks
+  - Color indicates tracking: green=tracked, grey=fallback
+
+- [x] **Neutral rest hand for fallback** - Generate linguistically unmarked hand shape
+  - Implemented in `generate_neutral_hand()` function
+  - Does NOT use previous frame's hand (would carry forward a sign)
+  - Hands relaxed, fingers loosely curved downward
+  - **Fixed finger spacing** (was 25px wide, now 53px wide)
+
+- [x] **Reference body canvas** - Consistent coordinate system
+  - `REFERENCE_SHOULDER_WIDTH = 100px` as normalization anchor
+  - `normalize_to_reference()` scales all landmarks proportionally
+  - Scale factor clamped to 0.3-3.0 range
+
+### Known Issues Being Tracked
+
+| Issue                                   | Root Cause                                              | Status                               |
+| --------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
+| Blue stub for missing left hand         | Finger spacing too narrow (6px)                         | ✅ Fixed (now 15px spacing)          |
+| Hands too large in some frames          | Scale factor applied to hands (should cap?)             | 🟡 May need hand-specific cap        |
+| Double normalization risk               | `normalize_display` + `normalize_to_reference` conflict | ✅ Avoided (normalize_display=False) |
+| `normalize_display` breaks 6-point pose | `normalize_landmarks()` expects 33 points               | ✅ By design (disabled)              |
+| Colorful finger rendering               | Code not in current draw_skeleton                       | 🟡 Not implemented yet               |
+
+### Debugging Insights (2026-02-03)
+
+**Commit 4a8ed1fe was NOT relevant** - only deleted documentation files, no code changes.
+
+**Key findings:**
+
+1. Signatures are in normalized (0-1) coords, correctly scaled to pixels by `extract_landmarks_from_signature`
+2. `normalize_to_reference` works correctly - scales proportionally to 100px shoulder width
+3. Missing hands (MediaPipe zeros) trigger `generate_neutral_hand` - was too narrow, now fixed
+4. Hand scaling uses same factor as body - may need independent cap for very large scale factors
+
+### Critical Fixes (Priority 1)
+
+- [x] **Dynamic neck connection** - ✅ DONE
+- [ ] Shoulder→elbow→wrist arm lines (verify rendering)
+- [ ] Both-endpoints-valid check before drawing any connection (MediaPipe pattern)
+
+### Face Rendering (Priority 2)
+
+- [ ] Draw face as shapes not dots (eyes with lids, eyebrows, lips contour)
+- [ ] Nose outline (subtle, non-distracting)
+- [ ] Eyebrow position/shape for non-manual markers
+- [ ] Use FACEMESH_LIPS, FACEMESH_LEFT_EYE, etc. connection sets from MediaPipe
+
+### Hand Rendering (Priority 2)
+
+- [ ] Color-code each finger (thumb=red, index=orange, middle=green, ring=blue, pinky=purple)
+- [ ] Draw palm→fingertip connecting lines for all 5 fingers
+- [ ] Left hand / right hand base color distinction
+
+### Body Rendering (Priority 3)
+
+- [ ] Trapezoid torso option (simple, effective)
+- [ ] Keep neck connection (we have it, they skip it—see tradeoffs below)
+
+### Rendering Quality (Priority 3)
+
+- [ ] Anti-aliased lines: `cv2.LINE_AA` flag for smooth rendering
+- [ ] Draw points AFTER lines (MediaPipe pattern - "aesthetically better")
+- [ ] White border on joint dots: Draw larger white circle first, then colored fill
+- [ ] Larger joint dots during debug mode
+
+### Debug/Clean Mode Toggle (Priority 3)
+
+- [ ] Add `mode` parameter: `"debug"` vs `"clean"`
+- [ ] Debug mode: Show dots + landmark indices + low-confidence highlights (red)
+- [ ] Clean mode: Smooth lines only, no dots (Sign-MT style)
+- [ ] Show skeleton connectivity issues visually (broken limbs = dashed lines?)
+
+### MediaPipe Best Practices to Implement
+
+| Pattern              | Description                                  | Status                    |
+| -------------------- | -------------------------------------------- | ------------------------- |
+| Visibility threshold | Skip landmarks with visibility < 0.5         | ✅ In recognition_base.py |
+| Both endpoints check | Only draw connection if both endpoints valid | ⬜ TODO                   |
+| Points after lines   | Draw joints after skeleton lines             | ⬜ TODO                   |
+| DrawingSpec pattern  | Per-landmark color/thickness customization   | ⬜ TODO                   |
+
+### Design Tradeoffs: Our Choices vs Sign-MT
+
+| Our Approach       | Sign-MT        | Why We Keep Ours                        | Why They Skipped                                         |
+| ------------------ | -------------- | --------------------------------------- | -------------------------------------------------------- |
+| Neck connection    | Floating face  | Anatomical accuracy, smooth transitions | No MediaPipe neck landmark; hides face↔pose misalignment |
+| Debug dots         | Shapes only    | Essential during development            | End-user optimized                                       |
+| Explicit arm lines | Trapezoid body | Clear arm position visibility           | Hides occlusion issues                                   |
+
+### Potential Issues to Watch
+
+- [ ] **Neck jitter** - Test fast head turns; may need smoothing or max-stretch clamp
+- [ ] **Face-pose misalignment** - Test profile views; may need offset tolerance
+- [ ] **Arm occlusion** - Test crossed arms/hands-on-face signs; may need Z-order or opacity
+- [ ] **Fast motion jitter** - Test fingerspelling; add temporal smoothing if needed
 
 ---
 
