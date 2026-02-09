@@ -1,5 +1,19 @@
 # Setup & Usage Guide
 
+## 🛠️ One-Command Setup (Recommended)
+
+After cloning, run:
+
+```bash
+python3 -m venv venv
+source ./venv/bin/activate
+poetry install
+```
+
+This will install all required dependencies in your virtual environment, resolving any version conflicts automatically.
+
+---
+
 ## ✅ Environment Status
 
 - **Python**: 3.12.12 ✅

@@ -38,8 +38,7 @@ from typing import Dict, List, Tuple, Optional
 # Use new simpler skeleton renderer with compatibility layer
 from skeleton_renderer import (
     SkeletonDrawerCompat as SkeletonDrawer, 
-    extract_landmarks_from_signature, 
-    ReferenceBody, 
+    extract_landmarks_from_signature,
     CENTER_X, 
     CENTER_Y, 
     REFERENCE_SHOULDER_WIDTH
@@ -92,10 +91,6 @@ class SkeletonDebugger:
         # DEFAULT: normalize_display OFF for partial skeletons
         self.normalize_display = False
         
-        # Track previous frame's normalized landmarks for fallback
-        self.prev_landmarks1 = None
-        self.prev_landmarks2 = None
-        
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
         self.height = self.sig1_dict.get('metadata', {}).get('frame_height', 480)
@@ -121,34 +116,14 @@ class SkeletonDebugger:
         """Create blank frame for skeleton drawing."""
         return np.zeros((self.height, self.width, 3), dtype=np.uint8)
     
-    def _get_current_landmarks(self, frame_idx: int, sig_frames: List) -> Dict:
-        """Get landmarks for frame. Freeze on last frame if out of range."""
+    def _get_current_landmarks(self, frame_idx: int, sig_frames: List) -> Optional[np.ndarray]:
+        """Get landmarks array for frame. Freeze on last frame if out of range."""
         # Clamp to valid range - freeze on last frame when video ends
         if len(sig_frames) == 0:
-            return {}
+            return None
         
         clamped_idx = max(0, min(frame_idx, len(sig_frames) - 1))
-        landmarks = sig_frames[clamped_idx]
-        
-        if self.normalize_display:
-            # Apply body-centric normalization for visual comparison
-            landmarks = SkeletonDrawer.normalize_landmarks(landmarks)
-            
-            # Translate back to frame center for visibility
-            center_x = self.width // 2
-            center_y = self.height // 2
-            
-            normalized = {}
-            for key in landmarks:
-                if landmarks[key] is not None:
-                    points = landmarks[key].copy()
-                    points[:, 0] += center_x  # Translate X
-                    points[:, 1] += center_y  # Translate Y
-                    normalized[key] = points
-            
-            return normalized
-        else:
-            return landmarks
+        return sig_frames[clamped_idx]  # Return array directly
     
     def _draw_frame_info(self, frame: np.ndarray, frame_num: int, total: int, 
                         sig_name: str, lang: str) -> None:
@@ -258,7 +233,7 @@ class SkeletonDebugger:
         """
         frame_blank = self._create_blank_frame()
         
-        # Get landmarks FIRST
+        # Get landmarks as array
         lm = self._get_current_landmarks(self.current_frame, self.frames1)
         lang = self.lang1
         sig_name = self.sig1_path.stem
@@ -267,16 +242,9 @@ class SkeletonDebugger:
         # Normalize landmarks to reference body proportions
         lm_normalized = None
         if self._has_landmarks(lm):
-            lm_normalized = SkeletonDrawer.normalize_to_reference(
-                lm, 
-                last_frame_landmarks=self.prev_landmarks1
-            )
-            self.prev_landmarks1 = lm_normalized  # Save for next frame
+            lm_normalized = SkeletonDrawer.normalize_to_reference(lm)
         
-        # Draw reference body canvas WITH landmarks for dynamic head/neck
-        frame_blank = ReferenceBody.draw_canvas(frame_blank, landmarks=lm_normalized)
-        
-        # Draw skeleton
+        # Draw skeleton (includes head/neck/body/hands - no separate ReferenceBody needed)
         if self._has_landmarks(lm_normalized):
             frame_blank = SkeletonDrawer.draw_skeleton(
                 frame_blank, lm_normalized, lang=lang,
@@ -302,33 +270,30 @@ class SkeletonDebugger:
         frame1_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         frame2_blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         
-        # Get landmarks for current frame FIRST
-        lm1 = self._get_current_landmarks(self.current_frame, self.frames1)
-        lm2 = self._get_current_landmarks(self.current_frame, self.frames2)
+        # Get landmarks as arrays (extract_landmarks_from_signature returns arrays)
+        lm1 = None
+        lm2 = None
         
-        # Normalize to reference body proportions (zoom-invariant, consistent scaling)
+        # Clamp frame index to valid range (freeze on last frame)
+        idx1 = max(0, min(self.current_frame, len(self.frames1) - 1)) if len(self.frames1) > 0 else 0
+        idx2 = max(0, min(self.current_frame, len(self.frames2) - 1)) if len(self.frames2) > 0 else 0
+        
+        if len(self.frames1) > 0:
+            lm1 = self.frames1[idx1]
+        if len(self.frames2) > 0:
+            lm2 = self.frames2[idx2]
+        
+        # Normalize to reference body proportions (array-based, not dict)
         lm1_normalized = None
         lm2_normalized = None
         
         if self._has_landmarks(lm1):
-            lm1_normalized = SkeletonDrawer.normalize_to_reference(
-                lm1,
-                last_frame_landmarks=self.prev_landmarks1
-            )
-            self.prev_landmarks1 = lm1_normalized
+            lm1_normalized = SkeletonDrawer.normalize_to_reference(lm1)
         
         if self._has_landmarks(lm2):
-            lm2_normalized = SkeletonDrawer.normalize_to_reference(
-                lm2,
-                last_frame_landmarks=self.prev_landmarks2
-            )
-            self.prev_landmarks2 = lm2_normalized
+            lm2_normalized = SkeletonDrawer.normalize_to_reference(lm2)
         
-        # Draw reference body canvas WITH landmarks for dynamic head/neck
-        frame1_blank = ReferenceBody.draw_canvas(frame1_blank, landmarks=lm1_normalized)
-        frame2_blank = ReferenceBody.draw_canvas(frame2_blank, landmarks=lm2_normalized)
-        
-        # Draw skeletons
+        # Draw skeletons (includes head/neck/body/hands - no double heads)
         if self._has_landmarks(lm1_normalized):
             frame1_blank = SkeletonDrawer.draw_skeleton(
                 frame1_blank, lm1_normalized, lang=self.lang1,
@@ -398,9 +363,11 @@ class SkeletonDebugger:
             sig_name = self.sig2_path.stem
             total = len(self.frames2)
         
+        # Normalize and draw
         if self._has_landmarks(lm):
+            lm_normalized = SkeletonDrawer.normalize_to_reference(lm)
             frame_blank = SkeletonDrawer.draw_skeleton(
-                frame_blank, lm, lang=lang,
+                frame_blank, lm_normalized, lang=lang,
                 show_joints=self.show_joints
             )
         

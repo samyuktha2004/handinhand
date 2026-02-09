@@ -4,6 +4,20 @@ LinguaSign AI is a kinematics-to-kinematics translation tool that bridges the ga
 
 ---
 
+## 🛠️ One-Command Setup (Recommended)
+
+After cloning, run:
+
+```bash
+python3 -m venv venv
+source ./venv/bin/activate
+poetry install
+```
+
+This will install all required dependencies in your virtual environment, resolving any version conflicts automatically.
+
+---
+
 ## 📚 Documentation
 
 **New here?** Start with [docs/INDEX.md](docs/INDEX.md) for complete navigation guide.

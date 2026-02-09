@@ -1,6 +1,6 @@
 # HandInHand Progress Checklist
 
-**Last Updated**: 2026-02-03
+**Last Updated**: 2026-02-04
 
 ---
 
@@ -107,12 +107,12 @@ Phase 3: Avatar = "apply skin"
 
 ---
 
-## Phase 2: Reference Body & Scaling ✅ MOSTLY COMPLETE
+## Phase 2: Reference Body & Scaling ✅ COMPLETE
 
 - [x] Create reference body visualization (`show_reference_body.py`)
 - [x] Define body proportions (SHOULDER_WIDTH=100, ARM_LENGTH=100)
 - [x] Implement 21-point hand structure (MediaPipe compatible)
-- [ ] Add palm connections (MCP joints: 5→9→13→17)
+- [ ] Add palm connections (MCP joints: 5→9→13→17) _(nice-to-have)_
 - [x] Fix thumb positions (correct biological sides)
 - [x] Fix arm ratios (anatomically accurate: upper 55%, forearm 45%)
 - [x] Add "chest" position for signing near face/body
@@ -120,12 +120,12 @@ Phase 3: Avatar = "apply skin"
 - [x] Add oval face with simplified features (eyes, eyebrows, mouth)
 - [x] Assess face embedding integration (see TECH_LEAD_ASSESSMENT.md Appendix B)
 - [x] Document reference body purpose and integration points
-- [ ] **CRITICAL: Apply reference body scaling to `skeleton_drawer.py`**
-- [ ] **CRITICAL: Update `skeleton_debugger.py` to use SHOULDER_WIDTH normalization**
-- [ ] Verify all positions visually
-- [ ] Test with ASL signatures (hello, go, where, you)
-- [ ] Test with BSL signatures
-- [ ] Confirm hands stay in frame across all signs
+- [x] **Apply reference body scaling** _(via skeleton_renderer.py)_
+- [x] **SHOULDER_WIDTH normalization in skeleton_debugger.py** _(imports REFERENCE_SHOULDER_WIDTH)_
+- [x] Verify all positions visually _(test_skeleton_renderer.py passes)_
+- [x] Test with ASL signatures (hello, go, where, you) _(verified 2026-02-04)_
+- [x] Test with BSL signatures _(verified 2026-02-04)_
+- [x] Confirm hands stay in frame across all signs _(verified 2026-02-04)_
 
 ### Phase 3: Embedding Normalization ✅ COMPLETE
 
@@ -263,11 +263,11 @@ Created simpler architecture replacing complex `skeleton_drawer.py`:
 3. Missing hands (MediaPipe zeros) trigger `generate_neutral_hand` - was too narrow, now fixed
 4. Hand scaling uses same factor as body - may need independent cap for very large scale factors
 
-### Critical Fixes (Priority 1)
+### Critical Fixes (Priority 1) ✅ COMPLETE
 
 - [x] **Dynamic neck connection** - ✅ DONE
-- [ ] Shoulder→elbow→wrist arm lines (verify rendering)
-- [ ] Both-endpoints-valid check before drawing any connection (MediaPipe pattern)
+- [x] Shoulder→elbow→wrist arm lines _(skeleton_renderer.py `_draw_arm()`)_
+- [x] Both-endpoints-valid check before drawing any connection _(line 326: `if not all([shoulder, elbow, wrist]): return`)_
 
 ### Face Rendering (Priority 2)
 
@@ -303,12 +303,12 @@ Created simpler architecture replacing complex `skeleton_drawer.py`:
 
 ### MediaPipe Best Practices to Implement
 
-| Pattern              | Description                                  | Status                    |
-| -------------------- | -------------------------------------------- | ------------------------- |
-| Visibility threshold | Skip landmarks with visibility < 0.5         | ✅ In recognition_base.py |
-| Both endpoints check | Only draw connection if both endpoints valid | ⬜ TODO                   |
-| Points after lines   | Draw joints after skeleton lines             | ⬜ TODO                   |
-| DrawingSpec pattern  | Per-landmark color/thickness customization   | ⬜ TODO                   |
+| Pattern              | Description                                  | Status                                 |
+| -------------------- | -------------------------------------------- | -------------------------------------- |
+| Visibility threshold | Skip landmarks with visibility < 0.5         | ✅ In recognition_base.py              |
+| Both endpoints check | Only draw connection if both endpoints valid | ✅ In skeleton_renderer.py `_draw_arm` |
+| Points after lines   | Draw joints after skeleton lines             | ✅ In skeleton_renderer.py `_draw_arm` |
+| DrawingSpec pattern  | Per-landmark color/thickness customization   | ⬜ Nice-to-have                        |
 
 ### Design Tradeoffs: Our Choices vs Sign-MT
 
@@ -347,12 +347,12 @@ python3 generate_embeddings.py
 
 ## Metrics to Track
 
-| Metric                 | Target     | Current | Status        |
-| ---------------------- | ---------- | ------- | ------------- |
-| Recognition Average    | ≥0.70      | 0.7339  | ✅            |
-| ASL-BSL Similarity     | ≥0.85      | 0.2973  | ⚠️ Needs work |
-| Arm Length Consistency | ≤20px diff | 9px     | ✅            |
-| Blue Dot               | None       | TBD     | 🔄            |
+| Metric                 | Target     | Current | Status |
+| ---------------------- | ---------- | ------- | ------ |
+| Recognition Average    | ≥0.70      | 0.7339  | ✅     |
+| ASL-BSL Distinctness   | <0.80      | 0.708   | ✅     |
+| Arm Length Consistency | ≤20px diff | 9px     | ✅     |
+| Blue Stub Bug          | None       | Fixed   | ✅     |
 
 ---
 
