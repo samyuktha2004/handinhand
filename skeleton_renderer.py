@@ -47,6 +47,12 @@ HEAD_HEIGHT = 70
 PALM_LENGTH = 20           # Wrist to MCP line
 PALM_WIDTH = 24            # Width across knuckles (MCP line)
 
+# FINGER_LENGTHS: per-segment lengths in pixels.
+# For `thumb`, list is [CMC, MCP, IP, TIP] lengths.
+# For other fingers, list is [MCP_padding, PIP, DIP, TIP] where a leading 0
+# indicates the MCP connection is represented by `PALM_LENGTH` elsewhere.
+# Note: these are absolute pixel values tied to `PALM_LENGTH`. Consider
+# converting to relative fractions of `PALM_LENGTH` for portability later.
 FINGER_LENGTHS = {
     'thumb':  [8, 6, 5, 4],       # CMC→MCP→IP→TIP
     'index':  [0, 12, 8, 6],      # MCP→PIP→DIP→TIP (0 = palm connection)
@@ -99,7 +105,7 @@ FINGER_COLORS = {
 }
 
 # Biological limits (radians)
-ELBOW_MIN = 0.0           # Straight arm
+ELBOW_MIN = -0.12         # Allow slight hyperextension (~-7°)
 ELBOW_MAX = 2.6           # ~150 degrees flexion
 
 # Re-export for compatibility with skeleton_drawer imports
@@ -231,6 +237,8 @@ class SkeletonRenderer:
             if left_shoulder_raw and left_elbow_raw and self._is_reasonable_length(
                 self._distance(left_shoulder_raw, left_elbow_raw),
                 expected_upper,
+                min_ratio=0.35,
+                max_ratio=2.0,
             ):
                 left_angle = self._angle_to(left_shoulder_raw, left_elbow_raw)
                 positions['left_elbow'] = self._point_at_angle(
@@ -244,6 +252,8 @@ class SkeletonRenderer:
             if right_shoulder_raw and right_elbow_raw and self._is_reasonable_length(
                 self._distance(right_shoulder_raw, right_elbow_raw),
                 expected_upper,
+                min_ratio=0.35,
+                max_ratio=2.0,
             ):
                 right_angle = self._angle_to(right_shoulder_raw, right_elbow_raw)
                 positions['right_elbow'] = self._point_at_angle(
@@ -258,6 +268,8 @@ class SkeletonRenderer:
             if left_elbow_raw and left_wrist_raw and self._is_reasonable_length(
                 self._distance(left_elbow_raw, left_wrist_raw),
                 expected_lower,
+                min_ratio=0.35,
+                max_ratio=2.0,
             ):
                 left_wrist_angle = self._angle_to(left_elbow_raw, left_wrist_raw)
                 positions['left_wrist_angle'] = left_wrist_angle
@@ -272,6 +284,8 @@ class SkeletonRenderer:
             if right_elbow_raw and right_wrist_raw and self._is_reasonable_length(
                 self._distance(right_elbow_raw, right_wrist_raw),
                 expected_lower,
+                min_ratio=0.35,
+                max_ratio=2.0,
             ):
                 right_wrist_angle = self._angle_to(right_elbow_raw, right_wrist_raw)
                 positions['right_wrist_angle'] = right_wrist_angle
@@ -320,16 +334,21 @@ class SkeletonRenderer:
         """Euclidean distance between two points."""
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
 
-    def _is_reasonable_length(
-        self,
-        length: float,
-        expected: float,
-        min_ratio: float = 0.35,
-        max_ratio: float = 2.0,
-    ) -> bool:
-        if expected <= 0.0:
-            return False
-        return (expected * min_ratio) <= length <= (expected * max_ratio)
+        def _is_reasonable_length(
+            self,
+            length: float,
+            expected: float,
+            min_ratio: float = 0.5,
+            max_ratio: float = 1.5,
+        ) -> bool:
+            """Check if length is within biologically reasonable bounds.
+
+            Defaults are conservative (0.5x - 1.5x). Callers that require
+            looser bounds (long limbs in low-res) should pass explicit ratios.
+            """
+            if expected <= 0.0:
+                return False
+            return (expected * min_ratio) <= length <= (expected * max_ratio)
     
     def _angle_to(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         """Angle from p1 to p2 in radians."""
@@ -466,7 +485,12 @@ class SkeletonRenderer:
         offset_y = wrist_pos[1] - data_wrist[1]
         
         # Maximum reasonable hand span (wrist to fingertip)
-        max_hand_span = 150 * self.current_scale  # pixels
+        # Compute from palm + max finger lengths to be robust and portable
+        max_finger_reach = 0
+        for name in FINGER_LENGTHS:
+            lens = expected_lengths(name)
+            max_finger_reach = max(max_finger_reach, sum(lens))
+        max_hand_span = int((PALM_LENGTH + max_finger_reach) * 1.5 * self.current_scale)
         
         # Finger landmark indices (MediaPipe hand model)
         finger_indices = {
@@ -500,11 +524,11 @@ class SkeletonRenderer:
         for i in range(len(mcp_points) - 1):
             cv2.line(frame, mcp_points[i], mcp_points[i + 1], COLOR_BODY, 1, cv2.LINE_AA)
 
-        # Palm width validation (index MCP to pinky MCP)
+        # Palm width validation (index MCP to pinky MCP) - tighter bounds
         if len(mcp_points) >= 2:
             palm_span = self._distance(mcp_points[0], mcp_points[-1])
             expected_palm = PALM_WIDTH * self.current_scale
-            if not self._is_reasonable_length(palm_span, expected_palm, min_ratio=0.5, max_ratio=2.0):
+            if not self._is_reasonable_length(palm_span, expected_palm, min_ratio=0.6, max_ratio=1.4):
                 self._draw_neutral_hand(frame, wrist_pos, side)
                 return
         
@@ -546,8 +570,8 @@ class SkeletonRenderer:
                     expected = lengths[i] if i < len(lengths) else 0.0
                     if expected > 0.0:
                         seg_len = self._distance(pt1, pt2)
-                        min_len = expected * 0.35
-                        max_len = expected * 2.0
+                        min_len = expected * 0.5
+                        max_len = expected * 1.5
                         if not (min_len <= seg_len <= max_len):
                             prev_valid = False
                             finger_incomplete = True

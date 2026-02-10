@@ -1,0 +1,62 @@
+[
+  {
+    "path": "/Users/supriyarao/visual studio/handinhand/docs/41598_2022_15699_MOESM1_ESM.pdf",
+    "size_bytes": 22676517,
+    "word_count": 4945,
+    "snippet": "Supplementary Information A  Supplementary Information A1. List of concepts  List of the 800 concepts for which corresponding signs were searched on online dictionaries.  ABLE, ABOVE, TO ABSORB, TO ACCEPT, ACCIDENT, ACCOUNTING, ADDRESS, TO ADMIRE, TO ADMIT, ADVICE, AFTERNOON, AGAIN, AGAINST, AGE, TO AGREE, AIR, AIRPLANE, TO ALLOW, ALONE, ALWAYS, ANGRY, ANIMAL, TO ANSWER, APPLE, APPOINTMENT, TO ARGUE, TO ARREST, TO ARRIVE, ART, TO ASK, TO ATTACK, ATTENTION, AUNT, AUTUMN, AVAILABLE, TO AVOID, AWAKE, AWFUL, AWKWARD, BABY, BAD, BAG, BALL, BANANA, BANK, BAR, BATHROOM, BATTERY, BEACH, BEAR, BEARD, BEAUTIFUL, BED, BEE, BEER, TO BEHAVE, TO BELIEVE, TO BELONG, BELT, BESIDE, TO BET, BIG, BIKE, BILL, TO BIND, BIRD, BIRTH, TO BITE, BITTER, BLACK, TO BLAME, BLANKET, BLOOD, TO BLOW, BLUE, TO BLUSH, BOAT, BODY, BONE, BOOK, BOOTS, BORED, BOSS, TO BOTHER, BOTTLE, BOWL, BOX, BOY, BRAVE, BREAD, TO BREAK, BREAKFAST, TO BREATHE, BRIDGE, TO BRING, BROOM, BROTHER, BROWN, BUCKET, TO BUILD, BULLY, BUS, BUSY, BUTTERFLY, TO BUY, CAKE, CALM, CAMERA, CAN (NOUN), CAN (VERB), TO CANCEL, CANDLE, CANDY, CAR, TO CARE, CARROT, TO CARRY, CASTLE, CAT, CEILING, CHAIN, CHAIR, CHANCE, TO CHANGE, TO CHASE, CHEAP, TO CHEAT, TO CHECK, CHEESE, CHERRY, CHICKEN, CHOCOLATE, CHOICE, CHURCH, CIGARETTE, CIRCLE, CIRCUS, CITY, CLASS, CLEAN, CLEAR, CLEVER, TO CLIMB, CLOCK, CLOSED, CLOSET, CLOTHES, CLOUD, COFFEE, COLD, COLOR, COMB, TO COME, COMMON, TO COMMUNICATE, TO COMPARE, TO COMPLAIN, COMPLICATED, COMPUTER, CONFUSED, TO CONGRATULATE, TO CONTINUE, TO CONVINCE, TO COOK, TO COOPERATE, COPY, CORN, CORNER, CORRECT, COUCH, TO COUGH, TO COUNT, COUNTRY, COUSIN, TO COVER, COW, CRAZY, TO CREATE, TO CRITICIZE, CROSS, CROWD, TO CRY, CUP, CURIOUS, TO CUT, CUTE, TO DANCE, DANGEROUS, DARK, DAUGHTER, DEAF, DEAR, DEATH, TO DECEIVE, TO DECIDE, DEEP, DELICIOUS, TO DENY, TO DESIRE, TO DESTROY, DIAMOND, DIFFERENT, DIFFICULT, TO DIG, DIRTY, TO DISAGREE, TO DISAPPEAR, DISCOUNT, DISGUST, TO DISTRIBUTE, TO DIVE, TO DIVORCE, DIZZY, DOCTOR, ",
+    "tried": [
+      "PyPDF2"
+    ],
+    "keyword_hits": {
+      "handshape": 53,
+      "handshapes": 48,
+      "35": 14,
+      "Miozzo": 0,
+      "Peressotti": 0,
+      "Supplementary": 14,
+      "SI": 121,
+      "frequency": 1,
+      "percent": 8
+    }
+  },
+  {
+    "path": "/Users/supriyarao/visual studio/handinhand/docs/nihms100549.pdf",
+    "size_bytes": 3566782,
+    "word_count": 13993,
+    "snippet": "Modelling and Recognition of the Linguistic Components in\nAmerican Sign Language\nLiya Ding  and Aleix M. Martinez\nDept. of Electrical and Computer Engineering, The Ohio State University, Columbus, OH 43210\nLiya Ding: dingl@ece.osu.edu; Aleix M. Martinez: aleix@ece.osu.edu\nAbstract\nThe manual signs in sign languages are generated and interpreted using three basic building blocks:\nhandshape, motion, and place of articulation. When combined, these three components (together with\npalm orientation) uniquely determine the meaning of the manual sign. This means that the use of\npattern recognition techniques that only employ a subset of these components is inappropriate for\ninterpreting the sign or to build automatic recognizers of the language. In this paper, we define an\nalgorithm to model these three basic components form a single video sequence of two-dimensional\npictures of a sign. Recognition of these three components are then combined to determine the class\nof the signs in the videos. Experiments are performed on a database of (isolated) American Sign\nLanguage (ASL) signs. The results demonstrate that, using semi-automatic detection, all three\ncomponents can be reliably recovered from two-dimensional video sequences, allowing for an\naccurate representation and recognition of the signs.\nKeywords\nAmerican Sign Language; handshape; motion reconstruction; multiple cue recognition; computer\nvision\n1 Introduction\nSign languages are used all over the world as a primary means of communication by deaf\npeople. American Sign Language (ASL) is one example, with broad uses in the United States.\nAccording to current estimates, in the United States alone, it is used regularly by more than\n500, 000 people, and up to 2 million use it from time to time. There is thus a great need for\nsystems that can interpret ASL (e.g., computer interfaces) or can serve as interpreters between\nASL and English (e.g., in hospitals).\nAs other sign languages, ASL has a manual component and a non-manual o",
+    "tried": [
+      "PyPDF2"
+    ],
+    "keyword_hits": {
+      "handshape": 102,
+      "handshapes": 31,
+      "35": 8,
+      "Miozzo": 0,
+      "Peressotti": 0,
+      "Supplementary": 0,
+      "SI": 606,
+      "frequency": 0,
+      "percent": 1
+    }
+  },
+  {
+    "path": "/Users/supriyarao/visual studio/handinhand/docs/obp.0220.pdf",
+    "size_bytes": 67964167,
+    "word_count": 180470,
+    "snippet": "Simplified Signs\nJohn D. B onvillian , nicole Kissane lee, Tracy T. D ooley, anD Filip T. loncKe Bonvillian , Kissane lee, Dooley, anD loncKe             simpli FieD signs             volume 2A Manual Sign-Communication System for Special Populations\nSimplified Signs  presents a system of manual sign communication intended for \nspecial populations who have had limited success mastering spoken or full sign \nlanguages. It is the culmination of over twenty years of research and development \nby the authors. The Simplified Sign System has been developed and tested for ease \nof sign comprehension, memorization, and formation by limiting the complexity \nof the motor skills required to form each sign, and by ensuring that each sign \nvisually resembles the meaning it conveys.\nVolume 1 outlines the research underpinning and informing the project, and \nplaces the Simplified Sign System in a wider context of sign usage, historically \nand by different populations. Volume 2 presents the lexicon of signs, totalling \napproximately 1000 signs, each with a clear illustration and a written description \nof how the sign is formed, as well as a memory aid that connects the sign visually \nto the meaning that it conveys. \nWhile the Simplified Sign System originally was developed to meet the needs of \npersons with intellectual disabilities, cerebral palsy, autism, or aphasia, it may \nalso assist the communication needs of a wider audience \u2013 such as healthcare \nprofessionals, aid workers, military personnel , travellers or parents, and children \nwho have not yet mastered spoken language.  The system also has been shown to \nenhance learning for individuals studying a foreign language. \nLucid and comprehensive, this work constitutes a valuable resource that will \nenhance the communicative interactions of many different people, and will be of \ngreat interest to researchers and educators alike.\nAs with all Open Book publications, this entire book is available to read for free on \nthe publisher\u2019s",
+    "tried": [
+      "PyPDF2"
+    ],
+    "keyword_hits": {
+      "handshape": 45,
+      "handshapes": 13,
+      "35": 53,
+      "Miozzo": 0,
+      "Peressotti": 0,
+      "Supplementary": 2,
+      "SI": 7275,
+      "frequency": 0,
+      "percent": 0
+    }
+  }
+]

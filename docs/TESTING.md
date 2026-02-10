@@ -169,6 +169,23 @@ Generate or regenerate embeddings for recognition.
 python generate_embeddings.py
 ```
 
+## Embedding Ablation & Invariance (new)
+
+After running `generate_embeddings.py` (which now writes `_joint.npy` and `_combined.npy`), run the ablation and invariance checks:
+
+```bash
+# Check translation invariance (should PASS)
+PYTHONPATH=. ./venv/bin/python3 scripts/check_embedding_invariance.py
+
+# Run ablation comparing joint vs combined embeddings (requires generated npy files)
+PYTHONPATH=. ./venv/bin/python3 scripts/run_embedding_ablation.py
+
+# Render a probe frame for a quick visual check
+PYTHONPATH=. ./venv/bin/python3 scripts/render_probe_frame.py
+```
+
+Include these three commands in CI as a smoke test to ensure core invariants are preserved after changes.
+
 ## Common Workflows
 
 ### Quick Visual Check

@@ -126,18 +126,33 @@ class RecognitionEngine:
         
         Same normalization as used in embedding generation.
         """
-        if landmarks.shape[0] <= 12:
+        # If too few points, return as-is
+        if landmarks is None or landmarks.shape[0] == 0:
             return landmarks
-        
-        # Get shoulder center (indices 11 and 12)
-        shoulder_left = landmarks[SHOULDER_CENTER_LEFT][:2]  # x, y only
-        shoulder_right = landmarks[SHOULDER_CENTER_RIGHT][:2]
-        shoulder_center = (shoulder_left + shoulder_right) / 2.0
-        
-        # Normalize: subtract shoulder center from all points (x, y only)
+
         landmarks_normalized = landmarks.copy()
-        landmarks_normalized[:, :2] -= shoulder_center
-        
+
+        # Heuristic 1: use first two pose points (common in 6-point pose) if valid
+        if landmarks.shape[0] >= 2:
+            left = landmarks[0][:2]
+            right = landmarks[1][:2]
+            if (np.linalg.norm(left) > 0.0) and (np.linalg.norm(right) > 0.0):
+                shoulder_center = (left + right) / 2.0
+                # Only subtract from non-zero points
+                valid_mask = ~((np.abs(landmarks_normalized[:, 0]) < 1e-6) & (np.abs(landmarks_normalized[:, 1]) < 1e-6))
+                landmarks_normalized[valid_mask, :2] -= shoulder_center
+                return landmarks_normalized
+
+        # Heuristic 2: legacy indices (if full pose ordering present)
+        if landmarks.shape[0] > max(SHOULDER_CENTER_LEFT, SHOULDER_CENTER_RIGHT):
+            shoulder_left = landmarks[SHOULDER_CENTER_LEFT][:2]
+            shoulder_right = landmarks[SHOULDER_CENTER_RIGHT][:2]
+            shoulder_center = (shoulder_left + shoulder_right) / 2.0
+            valid_mask = ~((np.abs(landmarks_normalized[:, 0]) < 1e-6) & (np.abs(landmarks_normalized[:, 1]) < 1e-6))
+            landmarks_normalized[valid_mask, :2] -= shoulder_center
+            return landmarks_normalized
+
+        # Fallback: no reliable shoulders, return as-is
         return landmarks_normalized
 
     def _extract_frame_features(self, frame_idx: int) -> Optional[np.ndarray]:

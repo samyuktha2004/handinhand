@@ -96,6 +96,15 @@ Phase 3: Avatar = "apply skin"
 - [x] Recognition engine (Cosine similarity)
 - [x] Recognition quality: **0.7339 average** ✅
 
+### Files of Interest
+
+- **Recognition engine implementation:** `recognition_engine.py` — core real-time capture/normalize/recognize loop (located in repo root). Status: production-ready for MVP, documented here for progress tracking.
+
+### Docs & Stack
+
+- **Stack updates summary:** `docs/STACK_UPDATES.md` (recent tech changes, CI recommendations)
+- **Docs index:** `docs/README.md` — use this to find canonical docs. Keep `PROGRESS_CHECKLIST.md` as the engineering checklist; move long-form research to `docs/RESEARCH_INSIGHTS.md`.
+
 ---
 
 ## Recognition Engine Refactor ✅ COMPLETE
@@ -137,6 +146,15 @@ Phase 3: Avatar = "apply skin"
 - [x] Dim gray segments/dots for incomplete fingers (no reconstruction)
 - [ ] Add light-mode palette for accessibility (future)
 - [ ] Optional: boxy/trapezoid torso (Sign-MT style) for reference body
+
+### Handshape Priors (Merged)
+
+- [x] Merge numeric handshape priors from Miozzo & Peressotti (2022) SI into project priors
+  - File: `assets/handshape_priors/core_handshape_priors.json` (probabilities for ranks 1..35)
+  - Loader helper: `scripts/priors_loader.py` (bias init, KL loss, sampler)
+  - Status: merged for review — `h01..h35` kept as placeholder IDs; map to human labels later if desired
+
+_Note: These priors are ready to be applied at model init (classifier bias) or as a training regularizer. If you prefer, I can add a small init/flag in `recognition_engine.py` to apply them non-invasively._
 
 **Reference body hardening plan (execute before embedding work)**
 
@@ -398,6 +416,31 @@ python3 generate_embeddings.py
 ⚠️ **DO NOT USE**:
 
 - Heredoc (`<< 'EOF'` or `<< SCRIPT`) - causes terminal corruption
+
+---
+
+## Handshape Insights: Miozzo & Peressotti (2022)
+
+**Summary (kept minimal & model-relevant):**
+
+- Corpus: >38,000 handshapes across 33 sign languages; 160 distinct handshapes observed; 35 handshapes occur in all languages (core set).
+- Major finding: strong cross-linguistic similarity in which handshapes exist; main variation is in frequencies per language.
+- Biomechanical constraints to encode: neighbor-finger coupling (adjacent fingers move/shape together), high individuation of thumb and index, frequent identical-shape across all digits.
+- Fingerspelling distribution differs from natural signing; treat as a separate domain.
+
+**Actionable checklist (for modelling & pipeline) — add/implement:**
+
+- **Core handshape basis:** Adopt the ~35 common handshapes as an initial prototype label set. (If needed later, expand to full 160.)
+- **Structured finger priors:** Implement a coupling prior/regularizer that enforces stronger coupling for adjacent fingers and allows greater independence for thumb/index.
+- **Representation:** Represent handshape as per-digit states (e.g., folded/extended/curled/contacts) with an option to collapse to "identical-shape" for the frequent all-same configurations.
+- **Augmentation strategy:** Augment training data with biomechanically plausible variations (neighbor coupling, increased thumb/index variance, identical-shape perturbations). Avoid unrealistic independent variations of non-adjacent fingers.
+- **Domain split:** Treat fingerspelling as a separate class/distribution (separate head or domain-adapted layer) because its statistics differ from natural signing.
+- **Language adaptation:** Implement language-specific reweighting over the shared handshape basis (fine-tune or apply frequency-based priors) rather than learning separate inventories per language.
+- **Evaluation / metrics:** Track per-handshape frequency coverage, per-language KL divergence from corpus frequencies, and recognition accuracy on signs requiring multi-digit individuation.
+- **Next data task:** Extract exact list of the 35 common handshapes + numeric frequency weights from the full paper (user to provide remaining pages or permission to fetch). Marked as TODO: `Extract numeric frequencies and full 35-handshape list` in project TODOs.
+
+**Citation:** Miozzo & Peressotti, "How the hand has shaped sign languages", Scientific Reports (2022). DOI: 10.1038/s41598-022-15699-1
+
 - Long inline Python with `-c` - escaping issues
 
 ✅ **DO USE**:

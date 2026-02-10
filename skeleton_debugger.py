@@ -97,6 +97,13 @@ class SkeletonDebugger:
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
         self.height = self.sig1_dict.get('metadata', {}).get('frame_height', 480)
+        # Probe support: if sig2_path is a probe name, try assets/probes/probe_{name}.json
+        if self.sig2_path and not Path(self.sig2_path).exists():
+            probe_path = Path('assets/probes') / f"probe_{self.sig2_path}.json"
+            if probe_path.exists():
+                self.sig2_path = str(probe_path)
+                self.sig2_dict = self._load_signature(self.sig2_path)
+                self.frames2 = extract_landmarks_from_signature(self.sig2_dict)
     
     def _has_landmarks(self, lm) -> bool:
         """Check if landmarks data is valid (not None and has content)."""
@@ -257,8 +264,15 @@ class SkeletonDebugger:
         
         # Draw skeleton (reference body scale, angle-driven)
         if self._has_landmarks(lm_raw):
+            lm_to_draw = lm_raw
+            if self.normalize_display:
+                try:
+                    lm_to_draw = SkeletonDrawer.normalize_to_reference(lm_raw)
+                except Exception:
+                    lm_to_draw = lm_raw
+
             frame_blank = SkeletonDrawer.draw_skeleton(
-                frame_blank, lm_raw, lang=lang,
+                frame_blank, lm_to_draw, lang=lang,
                 show_joints=self.show_joints
             )
         
@@ -297,14 +311,28 @@ class SkeletonDebugger:
         
         # Draw skeletons (reference body scale, angle-driven)
         if self._has_landmarks(lm1):
+            lm1_draw = lm1
+            if self.normalize_display:
+                try:
+                    lm1_draw = SkeletonDrawer.normalize_to_reference(lm1)
+                except Exception:
+                    lm1_draw = lm1
+
             frame1_blank = SkeletonDrawer.draw_skeleton(
-                frame1_blank, lm1, lang=self.lang1,
+                frame1_blank, lm1_draw, lang=self.lang1,
                 show_joints=self.show_joints
             )
-        
+
         if self._has_landmarks(lm2):
+            lm2_draw = lm2
+            if self.normalize_display:
+                try:
+                    lm2_draw = SkeletonDrawer.normalize_to_reference(lm2)
+                except Exception:
+                    lm2_draw = lm2
+
             frame2_blank = SkeletonDrawer.draw_skeleton(
-                frame2_blank, lm2, lang=self.lang2,
+                frame2_blank, lm2_draw, lang=self.lang2,
                 show_joints=self.show_joints
             )
         
@@ -480,6 +508,8 @@ Examples:
                        help='Language 2 label (default: BSL)')
     parser.add_argument('--dual', action='store_true',
                        help='Display side-by-side (WARNING: high CPU). Default: single-screen.')
+    parser.add_argument('--probe', default=None,
+                       help='Load built-in probe by name (e.g. up, down, open) as sig2')
     parser.add_argument('--fps', type=int, default=15,
                        help='Playback FPS (default: 15)')
     
@@ -497,12 +527,25 @@ Examples:
         sig1_path = assets_dir / args.lang1.lower() / f"{args.sig1}.json"
     
     # Handle sig2 path
-    if args.sig2.endswith('.json') or '/' in args.sig2:
-        # Full path provided
-        sig2_path = Path(args.sig2)
+    if args.probe:
+        # Use probe signature if requested
+        probe_path = Path('assets/probes') / f"probe_{args.probe}.json"
+        if probe_path.exists():
+            sig2_path = probe_path
+            args.lang2 = f"PROBE:{args.probe}"
+        else:
+            print(f"Probe not found: {probe_path}, falling back to --sig2")
+            if args.sig2.endswith('.json') or '/' in args.sig2:
+                sig2_path = Path(args.sig2)
+            else:
+                sig2_path = assets_dir / args.lang2.lower() / f"{args.sig2}.json"
     else:
-        # Shorthand name - build full path
-        sig2_path = assets_dir / args.lang2.lower() / f"{args.sig2}.json"
+        if args.sig2.endswith('.json') or '/' in args.sig2:
+            # Full path provided
+            sig2_path = Path(args.sig2)
+        else:
+            # Shorthand name - build full path
+            sig2_path = assets_dir / args.lang2.lower() / f"{args.sig2}.json"
     
     # Verify paths exist
     if not sig1_path.exists():

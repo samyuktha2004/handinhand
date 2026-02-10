@@ -190,6 +190,13 @@ git checkout HEAD -- docs/
 | `assets/signatures/` | All signature JSONs   | ✅ KEEP |
 | `assets/embeddings/` | All .npy files        | ✅ KEEP |
 
+## Stack updates & doc policy
+
+- Full technical stack updates (detailed, chronological) are tracked in `docs/STACK_UPDATES.md`.
+- The PRD (`docs/PRD.md`) contains only a short, stakeholder-facing summary of stack decisions — not low-level change logs. This keeps the PRD focused and stable while `docs/STACK_UPDATES.md` records engineering changes and recommendations for reproducibility and CI.
+
+Recommendation: keep the existing separation — PRD = summary, STACK_UPDATES = changelog/engineering notes. Link both from `docs/README.md`.
+
 ---
 
 ## Part 2: What's Actually Broken

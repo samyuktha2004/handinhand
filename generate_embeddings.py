@@ -85,31 +85,45 @@ class EmbeddingGenerator:
         3. Return normalized array
         """
         landmarks = np.array(landmarks, dtype=np.float32)
-        
+
+        # If caller provided shoulder center, use it (common case)
         if shoulder_center is not None:
             landmarks_normalized = landmarks.copy()
             valid_mask = np.logical_not(
-                (np.abs(landmarks_normalized[:, 0]) < 1e-3)
-                & (np.abs(landmarks_normalized[:, 1]) < 1e-3)
+                (np.abs(landmarks_normalized[:, 0]) < 1e-6)
+                & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
             )
             landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
-        else:
-            # Get shoulder center (average of indices 11 and 12)
-            if landmarks.shape[0] > 12:
-                shoulder_left = landmarks[SHOULDER_CENTER_LEFT]
-                shoulder_right = landmarks[SHOULDER_CENTER_RIGHT]
-                shoulder_center = (shoulder_left + shoulder_right) / 2.0
-                
-                # Normalize: subtract shoulder center from valid points only
-                landmarks_normalized = landmarks.copy()
+            return landmarks_normalized
+
+        # Heuristics: detect shoulders from pose block (first two points if present)
+        landmarks_normalized = landmarks.copy()
+        if landmarks.shape[0] >= 2:
+            left = landmarks[0][:2]
+            right = landmarks[1][:2]
+            # If coordinates look like normalized coords (0..1) or pixel coords (>1), both handled
+            if (np.linalg.norm(left) > 0.0) and (np.linalg.norm(right) > 0.0):
+                shoulder_center = (left + right) / 2.0
                 valid_mask = np.logical_not(
-                    (np.abs(landmarks_normalized[:, 0]) < 1e-3)
-                    & (np.abs(landmarks_normalized[:, 1]) < 1e-3)
+                    (np.abs(landmarks_normalized[:, 0]) < 1e-6)
+                    & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
                 )
                 landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
-            else:
-                landmarks_normalized = landmarks
-        
+                return landmarks_normalized
+
+        # Fallback: if landmarks include full body ordering and known indices (legacy), try those
+        if landmarks.shape[0] > max(SHOULDER_CENTER_LEFT, SHOULDER_CENTER_RIGHT):
+            shoulder_left = landmarks[SHOULDER_CENTER_LEFT][:2]
+            shoulder_right = landmarks[SHOULDER_CENTER_RIGHT][:2]
+            shoulder_center = (shoulder_left + shoulder_right) / 2.0
+            valid_mask = np.logical_not(
+                (np.abs(landmarks_normalized[:, 0]) < 1e-6)
+                & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
+            )
+            landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
+            return landmarks_normalized
+
+        # Last resort: return as-is
         return landmarks_normalized
 
     def _frame_to_embedding(self, frame_data: Dict) -> np.ndarray:
@@ -122,9 +136,10 @@ class EmbeddingGenerator:
         3. Normalize (body-centric)
         4. Return normalized vector
         """
+        # Build joint array (pose + left_hand + right_hand + face) as before
         landmarks = []
         shoulder_center = None
-        
+
         pose = frame_data.get('pose')
         if pose:
             pose_len = len(pose)
@@ -137,7 +152,7 @@ class EmbeddingGenerator:
             else:
                 left = None
                 right = None
-            
+
             if left is not None and right is not None:
                 left_arr = np.array(left, dtype=np.float32)
                 right_arr = np.array(right, dtype=np.float32)
@@ -147,25 +162,25 @@ class EmbeddingGenerator:
                             [(left_arr[0] + right_arr[0]) / 2.0, (left_arr[1] + right_arr[1]) / 2.0, 0.0],
                             dtype=np.float32,
                         )
-        
-        # Concatenate all landmark groups: pose + left_hand + right_hand + face
+
         for key in ['pose', 'left_hand', 'right_hand', 'face']:
             if key in frame_data and frame_data[key]:
                 for pt in frame_data[key]:
-                    # Ensure 3D coordinates (add z=0 if missing)
                     if len(pt) == 2:
                         landmarks.append([pt[0], pt[1], 0.0])
                     else:
-                        landmarks.append(pt[:3])  # Take only first 3
-        
+                        landmarks.append(pt[:3])
+
         if len(landmarks) == 0:
-            return np.zeros(52 * 3, dtype=np.float32)  # 52 points * 3 coords
-        
+            return np.zeros(52 * 3, dtype=np.float32)
+
         landmarks = np.array(landmarks, dtype=np.float32)
-        
-        # Flatten and normalize
-        landmarks_flat = self._normalize_landmarks(landmarks, shoulder_center=shoulder_center)
-        return landmarks_flat.flatten().astype(np.float32)
+
+        # Joint stream: body-centric normalized flattened joints
+        joints_norm = self._normalize_landmarks(landmarks, shoulder_center=shoulder_center)
+        joint_feat = joints_norm.flatten().astype(np.float32)
+
+        return joint_feat
 
     def _compute_signature_embedding(self, sig_file: str) -> Optional[np.ndarray]:
         """
@@ -185,27 +200,68 @@ class EmbeddingGenerator:
         if not frames:
             return None
         
-        # Compute embedding for each frame
-        frame_embeddings = []
+        # --- Multi-stream extraction: joint, bone, joint_motion, bone_motion ---
+        joint_features = []
+        bone_features = []
+        joint_motion = []
+        bone_motion = []
+
+        prev_joints = None
+        prev_bones = None
+
         for frame in frames:
-            frame_embedding = self._frame_to_embedding(frame)
-            frame_embeddings.append(frame_embedding)
-        
-        # Global Average Pooling: average embeddings across all frames
-        avg_embedding = np.mean(frame_embeddings, axis=0)
-        
-        # Pad/reshape to EMBEDDING_DIM if needed
-        if len(avg_embedding) < EMBEDDING_DIM:
-            avg_embedding = np.pad(
-                avg_embedding,
-                (0, EMBEDDING_DIM - len(avg_embedding)),
-                mode='constant',
-                constant_values=0
-            )
+            joints = self._frame_to_embedding(frame)
+            joint_features.append(joints)
+
+            # bone features: simple difference between consecutive landmarks
+            # reshape joints into (N,3)
+            num_coords = joints.shape[0] // 3
+            joints_xy = joints.reshape((num_coords, 3))[:, :2]
+            bones = (joints_xy[1:] - joints_xy[:-1]).flatten().astype(np.float32)
+            bone_features.append(bones)
+
+            if prev_joints is None:
+                joint_motion.append(np.zeros_like(joints))
+            else:
+                joint_motion.append(joints - prev_joints)
+
+            if prev_bones is None:
+                bone_motion.append(np.zeros_like(bones))
+            else:
+                # pads/truncates to match
+                minlen = min(len(bones), len(prev_bones))
+                bm = np.zeros_like(bones)
+                bm[:minlen] = bones[:minlen] - prev_bones[:minlen]
+                bone_motion.append(bm)
+
+            prev_joints = joints
+            prev_bones = bones
+
+        # Average each stream across frames
+        joint_avg = np.mean(joint_features, axis=0)
+        bone_avg = np.mean(bone_features, axis=0)
+        jm_avg = np.mean(joint_motion, axis=0)
+        bm_avg = np.mean(bone_motion, axis=0)
+
+        # Concatenate streams (joint + bone + joint_motion + bone_motion)
+        combined = np.concatenate([joint_avg, bone_avg, jm_avg, bm_avg])
+
+        # Pad/reshape combined to EMBEDDING_DIM
+        if len(combined) < EMBEDDING_DIM:
+            combined = np.pad(combined, (0, EMBEDDING_DIM - len(combined)), mode='constant')
         else:
-            avg_embedding = avg_embedding[:EMBEDDING_DIM]
-        
-        return avg_embedding.astype(np.float32)
+            combined = combined[:EMBEDDING_DIM]
+
+        # Also return joint-only embedding for ablation comparison
+        if len(joint_avg) < EMBEDDING_DIM:
+            joint_emb = np.pad(joint_avg, (0, EMBEDDING_DIM - len(joint_avg)), mode='constant')
+        else:
+            joint_emb = joint_avg[:EMBEDDING_DIM]
+
+        return {
+            'joint': joint_emb.astype(np.float32),
+            'combined': combined.astype(np.float32),
+        }
 
     def _compute_aggregated_embedding(self, sig_files: List[str]) -> Optional[np.ndarray]:
         """
@@ -216,19 +272,26 @@ class EmbeddingGenerator:
         2. Average embeddings across all instances
         3. Return aggregated embedding (robust across signers/contexts)
         """
-        embeddings = []
-        
+        # Return both joint-only and combined aggregated embeddings
+        joint_embs = []
+        combined_embs = []
+
         for sig_file in sig_files:
-            embedding = self._compute_signature_embedding(sig_file)
-            if embedding is not None:
-                embeddings.append(embedding)
-        
-        if not embeddings:
+            res = self._compute_signature_embedding(sig_file)
+            if res is not None:
+                joint_embs.append(res['joint'])
+                combined_embs.append(res['combined'])
+
+        if not joint_embs:
             return None
-        
-        # Average embeddings across all instances
-        aggregated = np.mean(embeddings, axis=0)
-        return aggregated.astype(np.float32)
+
+        joint_agg = np.mean(joint_embs, axis=0)
+        combined_agg = np.mean(combined_embs, axis=0)
+
+        return {
+            'joint': joint_agg.astype(np.float32),
+            'combined': combined_agg.astype(np.float32),
+        }
 
     def generate_embeddings(self):
         """Generate embeddings for all concepts in registries."""
@@ -240,6 +303,10 @@ class EmbeddingGenerator:
         print(f"Output dir: {EMBEDDINGS_DIR}/")
         print("=" * 60)
         
+        # We'll compute both joint-only and combined embeddings and write both
+        joint_map = {}
+        combined_map = {}
+
         for concept_id, concept_data in self.asl_registry.items():
             if concept_id.startswith("_"):
                 continue  # Skip metadata entries
@@ -256,16 +323,21 @@ class EmbeddingGenerator:
                 for i, f in enumerate(asl_files):
                     print(f"      {i+1}. {Path(f).name}")
                 
-                # Compute aggregated embedding
-                asl_embedding = self._compute_aggregated_embedding(asl_files)
-                if asl_embedding is not None:
-                    # Save to .npy file
-                    npy_path = concept_data.get("embedding_mean_file")
-                    if npy_path:
-                        os.makedirs(os.path.dirname(npy_path), exist_ok=True)
-                        np.save(npy_path, asl_embedding)
-                        print(f"   ✅ ASL embedding saved: {npy_path}")
-                        print(f"      Shape: {asl_embedding.shape}, Mean: {asl_embedding.mean():.4f}")
+                # Compute aggregated embeddings (joint + combined)
+                asl_embs = self._compute_aggregated_embedding(asl_files)
+                if asl_embs is not None:
+                    # Save joint-only and combined embeddings to separate files
+                    base_npy = concept_data.get("embedding_mean_file")
+                    if base_npy:
+                        os.makedirs(os.path.dirname(base_npy), exist_ok=True)
+                        joint_path = base_npy.replace('.npy', '_joint.npy')
+                        combined_path = base_npy.replace('.npy', '_combined.npy')
+                        np.save(joint_path, asl_embs['joint'])
+                        np.save(combined_path, asl_embs['combined'])
+                        joint_map[concept_id] = joint_path
+                        combined_map[concept_id] = combined_path
+                        print(f"   ✅ ASL joint saved: {joint_path}")
+                        print(f"   ✅ ASL combined saved: {combined_path}")
                     else:
                         print(f"   ⚠️  No embedding file path specified")
                 else:
@@ -286,13 +358,18 @@ class EmbeddingGenerator:
                 # Compute embedding (single BSL target)
                 bsl_embedding = self._compute_signature_embedding(bsl_file)
                 if bsl_embedding is not None:
-                    # Save to .npy file
                     npy_path = concept_data.get("embedding_mean_file")
                     if npy_path:
                         os.makedirs(os.path.dirname(npy_path), exist_ok=True)
-                        np.save(npy_path, bsl_embedding)
-                        print(f"   ✅ BSL embedding saved: {npy_path}")
-                        print(f"      Shape: {bsl_embedding.shape}, Mean: {bsl_embedding.mean():.4f}")
+                        joint_path = npy_path.replace('.npy', '_joint.npy')
+                        combined_path = npy_path.replace('.npy', '_combined.npy')
+                        np.save(joint_path, bsl_embedding)  # single-file BSL target => joint only
+                        # For BSL target we reuse same for combined placeholder
+                        np.save(combined_path, bsl_embedding)
+                        joint_map[concept_id] = joint_path
+                        combined_map[concept_id] = combined_path
+                        print(f"   ✅ BSL joint saved: {joint_path}")
+                        print(f"   ✅ BSL combined saved: {combined_path}")
                     else:
                         print(f"   ⚠️  No embedding file path specified")
                 else:
