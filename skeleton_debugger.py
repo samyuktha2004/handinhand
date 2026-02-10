@@ -39,6 +39,7 @@ from typing import Dict, List, Tuple, Optional
 from skeleton_renderer import (
     SkeletonDrawerCompat as SkeletonDrawer, 
     extract_landmarks_from_signature,
+    ReferenceBody,
     CENTER_X, 
     CENTER_Y, 
     REFERENCE_SHOULDER_WIDTH
@@ -239,15 +240,13 @@ class SkeletonDebugger:
         sig_name = self.sig1_path.stem
         total = len(self.frames1)
         
-        # Normalize landmarks to reference body proportions
-        lm_normalized = None
-        if self._has_landmarks(lm):
-            lm_normalized = SkeletonDrawer.normalize_to_reference(lm)
+        # Use raw landmarks for angle extraction; renderer anchors to reference body
+        lm_raw = lm if self._has_landmarks(lm) else None
         
-        # Draw skeleton (includes head/neck/body/hands - no separate ReferenceBody needed)
-        if self._has_landmarks(lm_normalized):
+        # Draw skeleton (reference body scale, angle-driven)
+        if self._has_landmarks(lm_raw):
             frame_blank = SkeletonDrawer.draw_skeleton(
-                frame_blank, lm_normalized, lang=lang,
+                frame_blank, lm_raw, lang=lang,
                 show_joints=self.show_joints
             )
         
@@ -283,26 +282,16 @@ class SkeletonDebugger:
         if len(self.frames2) > 0:
             lm2 = self.frames2[idx2]
         
-        # Normalize to reference body proportions (array-based, not dict)
-        lm1_normalized = None
-        lm2_normalized = None
-        
+        # Draw skeletons (reference body scale, angle-driven)
         if self._has_landmarks(lm1):
-            lm1_normalized = SkeletonDrawer.normalize_to_reference(lm1)
-        
-        if self._has_landmarks(lm2):
-            lm2_normalized = SkeletonDrawer.normalize_to_reference(lm2)
-        
-        # Draw skeletons (includes head/neck/body/hands - no double heads)
-        if self._has_landmarks(lm1_normalized):
             frame1_blank = SkeletonDrawer.draw_skeleton(
-                frame1_blank, lm1_normalized, lang=self.lang1,
+                frame1_blank, lm1, lang=self.lang1,
                 show_joints=self.show_joints
             )
         
-        if self._has_landmarks(lm2_normalized):
+        if self._has_landmarks(lm2):
             frame2_blank = SkeletonDrawer.draw_skeleton(
-                frame2_blank, lm2_normalized, lang=self.lang2,
+                frame2_blank, lm2, lang=self.lang2,
                 show_joints=self.show_joints
             )
         

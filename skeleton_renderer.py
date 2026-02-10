@@ -113,7 +113,7 @@ class SkeletonRenderer:
         self.width = width
         self.height = height
         self.center_x = width // 2
-        self.center_y = 200  # Shoulder line
+        self.center_y = height // 2  # Match reference body center
         
         # Reference positions (defaults when no data)
         self.ref_positions = self._compute_reference_positions()
@@ -181,60 +181,63 @@ class SkeletonRenderer:
         
         pose = landmarks.get('pose')
         if pose is not None and len(pose) >= 6:
-            # 6-point pose: 0=left_shoulder, 1=right_shoulder, 2=left_elbow, 
+            # 6-point pose: 0=left_shoulder, 1=right_shoulder, 2=left_elbow,
             #               3=right_elbow, 4=left_wrist, 5=right_wrist
             
-            # Shoulders
-            ls = self._to_point(pose[0])
-            rs = self._to_point(pose[1])
+            # Keep shoulders fixed to reference body
+            positions['left_shoulder'] = self.ref_positions['left_shoulder']
+            positions['right_shoulder'] = self.ref_positions['right_shoulder']
+            positions['shoulder_center'] = (self.center_x, self.center_y)
             
-            if ls and rs:
-                # Use actual shoulder positions as anchor
-                positions['left_shoulder'] = ls
-                positions['right_shoulder'] = rs
-                positions['shoulder_center'] = (
-                    (ls[0] + rs[0]) // 2,
-                    (ls[1] + rs[1]) // 2
+            # Raw detected points (for angle extraction only)
+            left_shoulder_raw = self._to_point(pose[0])
+            right_shoulder_raw = self._to_point(pose[1])
+            left_elbow_raw = self._to_point(pose[2])
+            right_elbow_raw = self._to_point(pose[3])
+            left_wrist_raw = self._to_point(pose[4])
+            right_wrist_raw = self._to_point(pose[5])
+            
+            # Elbows - follow detected angles from raw pose, fixed segment length
+            if left_shoulder_raw and left_elbow_raw:
+                left_angle = self._angle_to(left_shoulder_raw, left_elbow_raw)
+                positions['left_elbow'] = self._point_at_angle(
+                    positions['left_shoulder'],
+                    left_angle,
+                    UPPER_ARM,
                 )
             else:
-                # Fallback to reference
-                positions['left_shoulder'] = self.ref_positions['left_shoulder']
-                positions['right_shoulder'] = self.ref_positions['right_shoulder']
-                positions['shoulder_center'] = (self.center_x, self.center_y)
+                positions['left_elbow'] = self.ref_positions['left_elbow']
             
-            # Elbows - validate biological possibility
-            for i, side in [(2, 'left'), (3, 'right')]:
-                shoulder = positions[f'{side}_shoulder']
-                elbow_detected = self._to_point(pose[i])
-                
-                if elbow_detected:
-                    # Check if elbow is at valid distance from shoulder
-                    dist = self._distance(shoulder, elbow_detected)
-                    if 0.5 * UPPER_ARM <= dist <= 1.5 * UPPER_ARM:
-                        positions[f'{side}_elbow'] = elbow_detected
-                    else:
-                        # Out of proportion - use reference angle, fixed distance
-                        angle = self._angle_to(shoulder, elbow_detected)
-                        positions[f'{side}_elbow'] = self._point_at_angle(shoulder, angle, UPPER_ARM)
-                else:
-                    positions[f'{side}_elbow'] = self.ref_positions[f'{side}_elbow']
+            if right_shoulder_raw and right_elbow_raw:
+                right_angle = self._angle_to(right_shoulder_raw, right_elbow_raw)
+                positions['right_elbow'] = self._point_at_angle(
+                    positions['right_shoulder'],
+                    right_angle,
+                    UPPER_ARM,
+                )
+            else:
+                positions['right_elbow'] = self.ref_positions['right_elbow']
             
-            # Wrists - validate biological possibility
-            for i, side in [(4, 'left'), (5, 'right')]:
-                elbow = positions[f'{side}_elbow']
-                wrist_detected = self._to_point(pose[i])
-                
-                if wrist_detected:
-                    # Check if wrist is at valid distance from elbow
-                    dist = self._distance(elbow, wrist_detected)
-                    if 0.5 * LOWER_ARM <= dist <= 1.5 * LOWER_ARM:
-                        positions[f'{side}_wrist'] = wrist_detected
-                    else:
-                        # Out of proportion - use reference angle, fixed distance
-                        angle = self._angle_to(elbow, wrist_detected)
-                        positions[f'{side}_wrist'] = self._point_at_angle(elbow, angle, LOWER_ARM)
-                else:
-                    positions[f'{side}_wrist'] = self.ref_positions[f'{side}_wrist']
+            # Wrists - follow detected angles from raw pose, fixed segment length
+            if left_elbow_raw and left_wrist_raw:
+                left_wrist_angle = self._angle_to(left_elbow_raw, left_wrist_raw)
+                positions['left_wrist'] = self._point_at_angle(
+                    positions['left_elbow'],
+                    left_wrist_angle,
+                    LOWER_ARM,
+                )
+            else:
+                positions['left_wrist'] = self.ref_positions['left_wrist']
+            
+            if right_elbow_raw and right_wrist_raw:
+                right_wrist_angle = self._angle_to(right_elbow_raw, right_wrist_raw)
+                positions['right_wrist'] = self._point_at_angle(
+                    positions['right_elbow'],
+                    right_wrist_angle,
+                    LOWER_ARM,
+                )
+            else:
+                positions['right_wrist'] = self.ref_positions['right_wrist']
         else:
             # No pose data - use all reference positions
             positions.update(self.ref_positions)
@@ -349,7 +352,10 @@ class SkeletonRenderer:
         has_valid_hand = False
         if hand_data is not None:
             max_val = np.abs(hand_data[:, :2]).max()
-            has_valid_hand = max_val > 1.0  # Not all zeros
+            wrist_val = np.abs(hand_data[0, :2]).max() if len(hand_data) > 0 else 0.0
+            valid_points = int(np.sum(np.abs(hand_data[:, :2]).max(axis=1) > 1.0))
+            # Treat missing/invalid wrist or too few valid points as no hand data
+            has_valid_hand = (max_val > 1.0) and (wrist_val > 1.0) and (valid_points >= 6)
         
         if has_valid_hand:
             # Draw actual hand data with fixed-size fingers
@@ -365,6 +371,10 @@ class SkeletonRenderer:
         
         # Get wrist from data
         data_wrist = hand_data[0][:2]
+        if np.abs(data_wrist).max() <= 1.0:
+            # Missing wrist data - fallback to neutral hand
+            self._draw_neutral_hand(frame, wrist_pos, side)
+            return
         
         # Calculate offset to align with our wrist position
         offset_x = wrist_pos[0] - data_wrist[0]
@@ -382,29 +392,70 @@ class SkeletonRenderer:
             'pinky':  [0, 17, 18, 19, 20],
         }
         
+        def hand_point(idx: int) -> Tuple[int, int]:
+            return (
+                int(hand_data[idx][0] + offset_x),
+                int(hand_data[idx][1] + offset_y),
+            )
+        
+        def expected_lengths(name: str) -> List[float]:
+            if name == 'thumb':
+                return FINGER_LENGTHS[name]
+            return [PALM_LENGTH] + FINGER_LENGTHS[name][1:]
+        
+        # Draw palm connectors (wrist -> MCPs, plus MCP chain)
+        mcp_indices = [5, 9, 13, 17]
+        mcp_points = []
+        for idx in mcp_indices:
+            if idx < len(hand_data):
+                pt = hand_point(idx)
+                if self._in_bounds(pt[0], pt[1]):
+                    mcp_points.append(pt)
+                    cv2.line(frame, wrist_pos, pt, COLOR_BODY, 1, cv2.LINE_AA)
+        for i in range(len(mcp_points) - 1):
+            cv2.line(frame, mcp_points[i], mcp_points[i + 1], COLOR_BODY, 1, cv2.LINE_AA)
+        
+        segments_drawn = 0
         for finger_name, indices in finger_indices.items():
             color = FINGER_COLORS[finger_name]
+            lengths = expected_lengths(finger_name)
             
             # Draw finger segments with validation
+            prev_valid = True
             for i in range(len(indices) - 1):
                 idx1, idx2 = indices[i], indices[i + 1]
                 
+                if not prev_valid:
+                    break
+                
                 if idx1 < len(hand_data) and idx2 < len(hand_data):
-                    pt1 = (int(hand_data[idx1][0] + offset_x), 
-                           int(hand_data[idx1][1] + offset_y))
-                    pt2 = (int(hand_data[idx2][0] + offset_x), 
-                           int(hand_data[idx2][1] + offset_y))
+                    pt1 = hand_point(idx1)
+                    pt2 = hand_point(idx2)
                     
                     # Validate points are in bounds
                     if not (self._in_bounds(pt1[0], pt1[1]) and self._in_bounds(pt2[0], pt2[1])):
-                        continue
+                        prev_valid = False
+                        break
                     
                     # Validate points are reasonable distance from wrist (no floating points)
-                    dist1 = math.sqrt((pt1[0] - wrist_pos[0])**2 + (pt1[1] - wrist_pos[1])**2)
-                    dist2 = math.sqrt((pt2[0] - wrist_pos[0])**2 + (pt2[1] - wrist_pos[1])**2)
+                    dist1 = self._distance(wrist_pos, pt1)
+                    dist2 = self._distance(wrist_pos, pt2)
+                    if dist1 > max_hand_span or dist2 > max_hand_span:
+                        prev_valid = False
+                        break
                     
-                    if dist1 <= max_hand_span and dist2 <= max_hand_span:
-                        cv2.line(frame, pt1, pt2, color, 2, cv2.LINE_AA)
+                    # Validate segment length against expected proportions
+                    expected = lengths[i] if i < len(lengths) else 0.0
+                    if expected > 0.0:
+                        seg_len = self._distance(pt1, pt2)
+                        min_len = expected * 0.35
+                        max_len = expected * 2.0
+                        if not (min_len <= seg_len <= max_len):
+                            prev_valid = False
+                            break
+                    
+                    cv2.line(frame, pt1, pt2, color, 2, cv2.LINE_AA)
+                    segments_drawn += 1
             
             # Draw fingertip dot with validation
             tip_idx = indices[-1]
@@ -415,6 +466,9 @@ class SkeletonRenderer:
                 
                 if self._in_bounds(tip[0], tip[1]) and dist <= max_hand_span:
                     cv2.circle(frame, tip, 3, color, -1, cv2.LINE_AA)
+
+        if segments_drawn == 0:
+            self._draw_neutral_hand(frame, wrist_pos, side)
     
     def _draw_neutral_hand(self, frame: np.ndarray, wrist_pos: Tuple[int, int], 
                            side: str) -> None:
@@ -521,11 +575,16 @@ class ReferenceBody:
     LOWER_ARM = LOWER_ARM
     
     @staticmethod
-    def draw_canvas(frame: np.ndarray, landmarks: np.ndarray = None) -> np.ndarray:
+    def draw_canvas(
+        frame: np.ndarray,
+        landmarks: np.ndarray = None,
+        draw_head: bool = True,
+    ) -> np.ndarray:
         """Draw reference body outline on frame."""
         renderer = SkeletonRenderer(frame.shape[1], frame.shape[0])
         renderer._draw_reference_outline(frame)
-        renderer._draw_head_neck(frame, renderer.ref_positions)
+        if draw_head:
+            renderer._draw_head_neck(frame, renderer.ref_positions)
         return frame
 
 
@@ -543,8 +602,11 @@ class SkeletonDrawerCompat:
     COLOR_JOINT = COLOR_JOINT
     
     @staticmethod
-    def normalize_to_reference(landmarks: np.ndarray, 
-                               last_frame_landmarks: np.ndarray = None) -> np.ndarray:
+    def normalize_to_reference(
+        landmarks: np.ndarray,
+        last_frame_landmarks: np.ndarray = None,
+        center: Optional[Tuple[int, int]] = None,
+    ) -> np.ndarray:
         """
         Convert landmarks to reference-body-aligned coordinates.
         
@@ -580,14 +642,19 @@ class SkeletonDrawerCompat:
         # Apply: center at (CENTER_X, CENTER_Y), scale to reference
         normalized = landmarks.copy()
         
+        if center is None:
+            center_x, center_y = CENTER_X, CENTER_Y
+        else:
+            center_x, center_y = center
+
         # Only transform non-zero data (zeros indicate missing/invalid data)
         # Check left hand (indices 6:27) - keep zeros if original is all zeros
         left_hand_valid = np.abs(landmarks[6:27, :2]).max() > 0.001 if len(landmarks) > 27 else True
         right_hand_valid = np.abs(landmarks[27:48, :2]).max() > 0.001 if len(landmarks) > 48 else True
         
         # Transform all points
-        normalized[:, 0] = (normalized[:, 0] - shoulder_center[0]) * scale + CENTER_X
-        normalized[:, 1] = (normalized[:, 1] - shoulder_center[1]) * scale + CENTER_Y
+        normalized[:, 0] = (normalized[:, 0] - shoulder_center[0]) * scale + center_x
+        normalized[:, 1] = (normalized[:, 1] - shoulder_center[1]) * scale + center_y
         
         # Restore zeros for invalid hands (so _draw_hand can detect them)
         if not left_hand_valid and len(landmarks) > 27:

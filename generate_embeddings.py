@@ -71,7 +71,11 @@ class EmbeddingGenerator:
             print(f"      ⚠️  Error loading {sig_file}: {str(e)[:50]}")
             return None
 
-    def _normalize_landmarks(self, landmarks: List[List[float]]) -> np.ndarray:
+    def _normalize_landmarks(
+        self,
+        landmarks: List[List[float]],
+        shoulder_center: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
         """
         Normalize landmarks to be body-centric (relative to shoulder center).
         
@@ -82,16 +86,29 @@ class EmbeddingGenerator:
         """
         landmarks = np.array(landmarks, dtype=np.float32)
         
-        # Get shoulder center (average of indices 11 and 12)
-        if landmarks.shape[0] > 12:
-            shoulder_left = landmarks[SHOULDER_CENTER_LEFT]
-            shoulder_right = landmarks[SHOULDER_CENTER_RIGHT]
-            shoulder_center = (shoulder_left + shoulder_right) / 2.0
-            
-            # Normalize: subtract shoulder center from all points
-            landmarks_normalized = landmarks - shoulder_center
+        if shoulder_center is not None:
+            landmarks_normalized = landmarks.copy()
+            valid_mask = np.logical_not(
+                (np.abs(landmarks_normalized[:, 0]) < 1e-3)
+                & (np.abs(landmarks_normalized[:, 1]) < 1e-3)
+            )
+            landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
         else:
-            landmarks_normalized = landmarks
+            # Get shoulder center (average of indices 11 and 12)
+            if landmarks.shape[0] > 12:
+                shoulder_left = landmarks[SHOULDER_CENTER_LEFT]
+                shoulder_right = landmarks[SHOULDER_CENTER_RIGHT]
+                shoulder_center = (shoulder_left + shoulder_right) / 2.0
+                
+                # Normalize: subtract shoulder center from valid points only
+                landmarks_normalized = landmarks.copy()
+                valid_mask = np.logical_not(
+                    (np.abs(landmarks_normalized[:, 0]) < 1e-3)
+                    & (np.abs(landmarks_normalized[:, 1]) < 1e-3)
+                )
+                landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
+            else:
+                landmarks_normalized = landmarks
         
         return landmarks_normalized
 
@@ -106,6 +123,30 @@ class EmbeddingGenerator:
         4. Return normalized vector
         """
         landmarks = []
+        shoulder_center = None
+        
+        pose = frame_data.get('pose')
+        if pose:
+            pose_len = len(pose)
+            if pose_len > 12:
+                left = pose[SHOULDER_CENTER_LEFT]
+                right = pose[SHOULDER_CENTER_RIGHT]
+            elif pose_len >= 2:
+                left = pose[0]
+                right = pose[1]
+            else:
+                left = None
+                right = None
+            
+            if left is not None and right is not None:
+                left_arr = np.array(left, dtype=np.float32)
+                right_arr = np.array(right, dtype=np.float32)
+                if np.linalg.norm(left_arr[:2]) > 1.0 or np.linalg.norm(right_arr[:2]) > 1.0:
+                    if np.linalg.norm(left_arr[:2] - right_arr[:2]) > 1.0:
+                        shoulder_center = np.array(
+                            [(left_arr[0] + right_arr[0]) / 2.0, (left_arr[1] + right_arr[1]) / 2.0, 0.0],
+                            dtype=np.float32,
+                        )
         
         # Concatenate all landmark groups: pose + left_hand + right_hand + face
         for key in ['pose', 'left_hand', 'right_hand', 'face']:
@@ -123,7 +164,7 @@ class EmbeddingGenerator:
         landmarks = np.array(landmarks, dtype=np.float32)
         
         # Flatten and normalize
-        landmarks_flat = self._normalize_landmarks(landmarks)
+        landmarks_flat = self._normalize_landmarks(landmarks, shoulder_center=shoulder_center)
         return landmarks_flat.flatten().astype(np.float32)
 
     def _compute_signature_embedding(self, sig_file: str) -> Optional[np.ndarray]:

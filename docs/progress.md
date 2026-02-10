@@ -8,6 +8,33 @@
 
 ## Current Status
 
+### Feb 9, 2026 - Renderer + Embedding Alignment
+
+**Things that worked:**
+
+- Reference body outline preserved at default scale in debugger (no scaling drift).
+- Palm connectors and MCP chain added for hand render consistency.
+- Embeddings regenerated after normalization updates; recognition average remained at 0.7339 in local run.
+
+**Problems observed (needs validation):**
+
+- Missing hand in middle frames reported; neutral-hand fallback must be verified visually.
+- Palm connector still looks off in some frames (needs review of MCP base positions).
+- Double-head artifacts were seen earlier; verify no regressions in single/dual modes.
+- Reference body vs live render mismatch (scale/position) in dual mode; switch to angle-only on fixed body.
+
+**Insights:**
+
+- Embeddings should not be deleted wholesale; prefer targeted re-generation after normalization changes.
+- Normalize only valid (non-zero) landmarks to avoid skewed embeddings from missing points.
+- Hand validity should be tied to wrist landmark presence to prevent phantom data.
+- If the reference body is fixed, use raw pose angles only; avoid any centering/scaling that shifts the body.
+
+**Next validation steps:**
+
+- Run dual debugger (`where` is most sensitive) and verify hands stay connected in mid-frames.
+- Re-check `where_mean.npy` and other embedding means for extreme values.
+
 ### 📚 Open-Source Anatomy Resources (Feb 2, 2026)
 
 Researched open-source anatomy resources for potential body model reference. All verified for licensing:

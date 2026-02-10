@@ -127,12 +127,13 @@ Phase 3: Avatar = "apply skin"
 - [x] Test with BSL signatures _(verified 2026-02-04)_
 - [x] Confirm hands stay in frame across all signs _(verified 2026-02-04)_
 
-### Phase 3: Embedding Normalization ✅ COMPLETE
+### Phase 3: Embedding Normalization ✅ COMPLETE (Validation Pending)
 
 - [x] Shoulder-width scaling in `generate_embeddings.py`
 - [x] Shoulder-width scaling in `recognition_engine.py`
-- [x] Regenerate embeddings
-- [x] Verify recognition quality unchanged (0.7339)
+- [x] Regenerate embeddings after normalization updates
+- [ ] Validate embedding stats (no extreme means) and re-check recognition quality
+- [ ] Visual validation: skeleton render and hand continuity in mid-frames
 
 ### Phase 4: Augmentation 🔄 PARTIAL
 
@@ -248,6 +249,9 @@ Created simpler architecture replacing complex `skeleton_drawer.py`:
 | --------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
 | Blue stub for missing left hand         | Finger spacing too narrow (6px)                         | ✅ Fixed (now 15px spacing)          |
 | Hands too large in some frames          | Scale factor applied to hands (should cap?)             | 🟡 May need hand-specific cap        |
+| Missing hand in mid-frames              | Wrist landmark sometimes zeroed                         | 🔄 Validate neutral-hand fallback    |
+| Palm connectors appear inconsistent     | MCP distribution/validation needs review                | 🔄 Visual validation required        |
+| Reference body scale mismatch in dual   | Normalization/overlay caused drift                      | 🔄 Angle-only render pending         |
 | Double normalization risk               | `normalize_display` + `normalize_to_reference` conflict | ✅ Avoided (normalize_display=False) |
 | `normalize_display` breaks 6-point pose | `normalize_landmarks()` expects 33 points               | ✅ By design (disabled)              |
 | Colorful finger rendering               | Code not in current draw_skeleton                       | 🟡 Not implemented yet               |

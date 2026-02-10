@@ -75,6 +75,15 @@ RIGHT_HAND_COLOR = (0, 0, 255) # Red - right hand
 JOINT_COLOR = (0, 255, 255)    # Yellow - joints
 NECK_COLOR = (0, 200, 0)       # Darker green - neck
 
+# Finger colors (BGR)
+FINGER_COLORS = {
+    'thumb': (0, 0, 255),     # Red
+    'index': (0, 165, 255),   # Orange
+    'middle': (0, 255, 0),    # Green
+    'ring': (255, 0, 0),      # Blue
+    'pinky': (255, 0, 255),   # Purple
+}
+
 # Hand connections (21 landmarks per hand)
 # 0=wrist, 1-4=thumb, 5-8=index, 9-12=middle, 13-16=ring, 17-20=pinky
 HAND_CONNECTIONS = [
@@ -209,11 +218,28 @@ def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
 
 def draw_hand(frame, landmarks, color):
     """Draw hand skeleton from 21 landmarks."""
-    # Draw connections
-    for idx1, idx2 in HAND_CONNECTIONS:
+    finger_connections = {
+        'thumb': [(0, 1), (1, 2), (2, 3), (3, 4)],
+        'index': [(0, 5), (5, 6), (6, 7), (7, 8)],
+        'middle': [(0, 9), (9, 10), (10, 11), (11, 12)],
+        'ring': [(0, 13), (13, 14), (14, 15), (15, 16)],
+        'pinky': [(0, 17), (17, 18), (18, 19), (19, 20)],
+    }
+    palm_connections = [(5, 9), (9, 13), (13, 17)]
+    
+    # Draw palm connections
+    for idx1, idx2 in palm_connections:
         pt1 = landmarks[idx1]
         pt2 = landmarks[idx2]
-        cv2.line(frame, pt1, pt2, color, 2)
+        cv2.line(frame, pt1, pt2, BODY_COLOR, 2)
+    
+    # Draw fingers with per-finger colors
+    for finger_name, connections in finger_connections.items():
+        finger_color = FINGER_COLORS[finger_name]
+        for idx1, idx2 in connections:
+            pt1 = landmarks[idx1]
+            pt2 = landmarks[idx2]
+            cv2.line(frame, pt1, pt2, finger_color, 2)
     
     # Draw joints
     for i, pt in enumerate(landmarks):
