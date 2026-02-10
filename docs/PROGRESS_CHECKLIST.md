@@ -1,6 +1,6 @@
 # HandInHand Progress Checklist
 
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-02-10
 
 ---
 
@@ -107,17 +107,22 @@ Phase 3: Avatar = "apply skin"
 
 ---
 
-## Phase 2: Reference Body & Scaling ✅ COMPLETE
+## Phase 2: Reference Body & Scaling
 
 - [x] Create reference body visualization (`show_reference_body.py`)
 - [x] Define body proportions (SHOULDER_WIDTH=100, ARM_LENGTH=100)
 - [x] Implement 21-point hand structure (MediaPipe compatible)
-- [ ] Add palm connections (MCP joints: 5→9→13→17) _(nice-to-have)_
+- [x] Add palm connections (MCP joints: 5→9→13→17)
 - [x] Fix thumb positions (correct biological sides)
 - [x] Fix arm ratios (anatomically accurate: upper 55%, forearm 45%)
 - [x] Add "chest" position for signing near face/body
 - [x] Add neck connection to head
 - [x] Add oval face with simplified features (eyes, eyebrows, mouth)
+- [x] Enforce elbow ROM + arm length constraints in reference body demo
+- [x] Add hand pose modes in reference body demo (open/close/spread/pinch)
+- [x] Clamp finger spread/spacing in reference body demo
+- [x] Add finger coupling for pinch/close and thumb involvement
+- [x] Add fist pose to reference body demo
 - [x] Assess face embedding integration (see TECH_LEAD_ASSESSMENT.md Appendix B)
 - [x] Document reference body purpose and integration points
 - [x] **Apply reference body scaling** _(via skeleton_renderer.py)_
@@ -126,6 +131,32 @@ Phase 3: Avatar = "apply skin"
 - [x] Test with ASL signatures (hello, go, where, you) _(verified 2026-02-04)_
 - [x] Test with BSL signatures _(verified 2026-02-04)_
 - [x] Confirm hands stay in frame across all signs _(verified 2026-02-04)_
+- [x] Switch finger colors to Wong palette (keep green body)
+- [x] Align neutral hand to wrist/forearm angle (fallback should follow wrist direction)
+- [x] Soften hand validation to avoid mid-frame dropouts (partial data should still render)
+- [x] Dim gray segments/dots for incomplete fingers (no reconstruction)
+- [ ] Add light-mode palette for accessibility (future)
+- [ ] Optional: boxy/trapezoid torso (Sign-MT style) for reference body
+
+**Reference body hardening plan (execute before embedding work)**
+
+- [x] Remove fixed neck length when face data exists (dynamic head/neck)
+- [x] Enforce arm proportion checks using detected shoulder scale
+- [x] Enforce palm width checks and guarantee connector continuity
+- [x] Align neutral hand to wrist/forearm angle (fallback follows wrist)
+- [x] Soften hand validation to avoid mid-frame dropouts
+
+### Motion Probe Plan (start after reference body hardening)
+
+- [x] Define probe set (up/down/left/right + open/close/spread/pinch)
+- [x] Create probe generator script (`generate_motion_probes.py`)
+- [x] Generate probe signatures (JSON in `assets/probes/`)
+- [x] Run embeddings on probes (same pipeline as signatures)
+- [x] Compare embedding deltas and flag inconsistencies
+- [x] Refine probes to move limbs relative to shoulder center (avoid full-body translation)
+- [x] Align probe directions to show_reference_body movements
+- [ ] Increase hand-shape probe separation (open/close/spread/pinch)
+- [ ] Add probe-only embedding mode (optional: disable shoulder centering)
 
 ### Phase 3: Embedding Normalization ✅ COMPLETE (Validation Pending)
 
@@ -134,6 +165,7 @@ Phase 3: Avatar = "apply skin"
 - [x] Regenerate embeddings after normalization updates
 - [ ] Validate embedding stats (no extreme means) and re-check recognition quality
 - [ ] Visual validation: skeleton render and hand continuity in mid-frames
+- [ ] Later: ROM-based per-joint validation (score/reject frames, no reconstruction in renderer)
 
 ### Phase 4: Augmentation 🔄 PARTIAL
 
@@ -249,12 +281,13 @@ Created simpler architecture replacing complex `skeleton_drawer.py`:
 | --------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
 | Blue stub for missing left hand         | Finger spacing too narrow (6px)                         | ✅ Fixed (now 15px spacing)          |
 | Hands too large in some frames          | Scale factor applied to hands (should cap?)             | 🟡 May need hand-specific cap        |
-| Missing hand in mid-frames              | Wrist landmark sometimes zeroed                         | 🔄 Validate neutral-hand fallback    |
+| Missing hand in mid-frames              | Validation rejects partial hand data                    | 🔄 Soften fallback thresholds        |
 | Palm connectors appear inconsistent     | MCP distribution/validation needs review                | 🔄 Visual validation required        |
-| Reference body scale mismatch in dual   | Normalization/overlay caused drift                      | 🔄 Angle-only render pending         |
+| Neutral hand angle mismatch             | Fallback hand not aligned to wrist angle                | 🔄 Align to forearm vector           |
+| Reference body scale mismatch in dual   | Any extra scaling/overlay drift                         | 🔄 Keep fixed reference scale only   |
 | Double normalization risk               | `normalize_display` + `normalize_to_reference` conflict | ✅ Avoided (normalize_display=False) |
 | `normalize_display` breaks 6-point pose | `normalize_landmarks()` expects 33 points               | ✅ By design (disabled)              |
-| Colorful finger rendering               | Code not in current draw_skeleton                       | 🟡 Not implemented yet               |
+| Colorful finger rendering               | Finger colors inconsistent per mode                     | 🔄 Verify all draw paths             |
 
 ### Debugging Insights (2026-02-03)
 

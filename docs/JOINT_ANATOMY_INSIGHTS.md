@@ -2,7 +2,7 @@
 
 **Date Created:** February 2, 2026  
 **Purpose:** Apply anatomical joint constraints to improve MediaPipe landmark validation  
-**Sources:** OpenStax Anatomy & Physiology 2e (CC BY 4.0), Physio-Pedia (CC BY-SA)
+**Sources:** OpenStax Anatomy & Physiology 2e (CC BY 4.0), Physio-Pedia (CC BY-SA), NCBI InformedHealth (IQWiG), Lang & Schieber 2004 (J Neurophysiol)
 
 ---
 
@@ -10,14 +10,14 @@
 
 Human joints are categorized by their structure and degrees of freedom (DOF):
 
-| Joint Type | DOF | Movement Types | Examples |
-|------------|-----|----------------|----------|
-| **Ball-and-Socket** | 3 (Multiaxial) | Flexion/extension, abduction/adduction, rotation | Shoulder, hip |
-| **Hinge** | 1 (Uniaxial) | Flexion/extension only | Elbow, knee, finger IP joints |
-| **Pivot** | 1 (Uniaxial) | Rotation around axis | Atlas-Axis (neck), radioulnar |
-| **Saddle** | 2 (Biaxial) | Flexion/extension, abduction/adduction | **Thumb CMC** (key!) |
-| **Condyloid** | 2 (Biaxial) | Flexion/extension, side-to-side | Wrist, knuckles (MCP) |
-| **Plane/Gliding** | Limited | Sliding movements | Carpal bones, vertebrae |
+| Joint Type          | DOF            | Movement Types                                   | Examples                      |
+| ------------------- | -------------- | ------------------------------------------------ | ----------------------------- |
+| **Ball-and-Socket** | 3 (Multiaxial) | Flexion/extension, abduction/adduction, rotation | Shoulder, hip                 |
+| **Hinge**           | 1 (Uniaxial)   | Flexion/extension only                           | Elbow, knee, finger IP joints |
+| **Pivot**           | 1 (Uniaxial)   | Rotation around axis                             | Atlas-Axis (neck), radioulnar |
+| **Saddle**          | 2 (Biaxial)    | Flexion/extension, abduction/adduction           | **Thumb CMC** (key!)          |
+| **Condyloid**       | 2 (Biaxial)    | Flexion/extension, side-to-side                  | Wrist, knuckles (MCP)         |
+| **Plane/Gliding**   | Limited        | Sliding movements                                | Carpal bones, vertebrae       |
 
 ---
 
@@ -27,45 +27,48 @@ Human joints are categorized by their structure and degrees of freedom (DOF):
 
 The **thumb has a SADDLE joint** at the carpometacarpal (CMC) level, giving it unique capabilities:
 
-| Joint | Thumb | Fingers (II-V) |
-|-------|-------|----------------|
-| **CMC** | Saddle (2 DOF) - can oppose | Plane/limited (gliding) |
-| **MCP** | Hinge-like (1 DOF) | Condyloid (2 DOF) - spread apart |
-| **IP** | 1 joint (hinge) | 2 joints: PIP + DIP (both hinge) |
+| Joint   | Thumb                       | Fingers (II-V)                   |
+| ------- | --------------------------- | -------------------------------- |
+| **CMC** | Saddle (2 DOF) - can oppose | Plane/limited (gliding)          |
+| **MCP** | Hinge-like (1 DOF)          | Condyloid (2 DOF) - spread apart |
+| **IP**  | 1 joint (hinge)             | 2 joints: PIP + DIP (both hinge) |
 
 **Why this matters:** The thumb can move **perpendicular to the palm** (opposition) while fingers cannot. This is essential for fingerspelling and many ASL signs.
 
 ### 2.2 Range of Motion (ROM) Values for Hands
 
 #### Thumb (Digit I)
-| Joint | Movement | Normal ROM |
-|-------|----------|------------|
-| CMC | Flexion | 50° |
-| CMC | Extension | 0° |
-| CMC | Abduction | 45-70° |
-| CMC | Adduction | 5-20° |
-| MCP | Flexion | 50° |
-| MCP | Extension | 0° |
-| IP | Flexion | 80° |
-| IP | Extension | 0° |
+
+| Joint | Movement  | Normal ROM |
+| ----- | --------- | ---------- |
+| CMC   | Flexion   | 50°        |
+| CMC   | Extension | 0°         |
+| CMC   | Abduction | 45-70°     |
+| CMC   | Adduction | 5-20°      |
+| MCP   | Flexion   | 50°        |
+| MCP   | Extension | 0°         |
+| IP    | Flexion   | 80°        |
+| IP    | Extension | 0°         |
 
 #### Fingers (Digits II-V)
-| Joint | Movement | Normal ROM |
-|-------|----------|------------|
-| MCP | Flexion | 80° |
-| MCP | Extension | 0° (some hyperextension possible) |
-| PIP | Flexion | up to 135° (varies by finger) |
-| PIP | Extension | 0-20° |
-| DIP | Flexion | up to 90° (varies by finger) |
-| DIP | Extension | 0-30° |
+
+| Joint | Movement  | Normal ROM                        |
+| ----- | --------- | --------------------------------- |
+| MCP   | Flexion   | 80°                               |
+| MCP   | Extension | 0° (some hyperextension possible) |
+| PIP   | Flexion   | up to 135° (varies by finger)     |
+| PIP   | Extension | 0-20°                             |
+| DIP   | Flexion   | up to 90° (varies by finger)      |
+| DIP   | Extension | 0-30°                             |
 
 ### 2.3 Wrist Joint ROM
-| Movement | Normal ROM |
-|----------|------------|
-| Flexion | 80-90° |
-| Extension | 70° |
-| Radial deviation | 20-30° |
-| Ulnar deviation | 30-50° |
+
+| Movement         | Normal ROM |
+| ---------------- | ---------- |
+| Flexion          | 80-90°     |
+| Extension        | 70°        |
+| Radial deviation | 20-30°     |
+| Ulnar deviation  | 30-50°     |
 
 ---
 
@@ -73,13 +76,13 @@ The **thumb has a SADDLE joint** at the carpometacarpal (CMC) level, giving it u
 
 The elbow is a **hinge joint** with strict constraints:
 
-| Movement | Normal ROM | Notes |
-|----------|------------|-------|
-| Flexion | 140-150° | Full bend |
-| Extension | 0° | Straight arm |
-| Hyperextension | Limited | ~5-10° in some individuals |
-| Pronation | 75-85° | Forearm rotation (palm down) |
-| Supination | 80-90° | Forearm rotation (palm up) |
+| Movement       | Normal ROM | Notes                        |
+| -------------- | ---------- | ---------------------------- |
+| Flexion        | 140-150°   | Full bend                    |
+| Extension      | 0°         | Straight arm                 |
+| Hyperextension | Limited    | ~5-10° in some individuals   |
+| Pronation      | 75-85°     | Forearm rotation (palm down) |
+| Supination     | 80-90°     | Forearm rotation (palm up)   |
 
 **Key constraint:** The elbow **cannot rotate** around its length axis - only flex/extend and allow forearm rotation at the radioulnar joint.
 
@@ -89,16 +92,16 @@ The elbow is a **hinge joint** with strict constraints:
 
 The shoulder is a **ball-and-socket joint** with maximum freedom:
 
-| Movement | Normal ROM |
-|----------|------------|
-| Flexion | 150-180° |
-| Extension | 45-60° |
-| Abduction | 150-180° |
-| Adduction | 30° |
-| Internal rotation | 70-90° |
-| External rotation | 90° |
-| Horizontal abduction | 130° |
-| Horizontal adduction | 40-50° |
+| Movement             | Normal ROM |
+| -------------------- | ---------- |
+| Flexion              | 150-180°   |
+| Extension            | 45-60°     |
+| Abduction            | 150-180°   |
+| Adduction            | 30°        |
+| Internal rotation    | 70-90°     |
+| External rotation    | 90°        |
+| Horizontal abduction | 130°       |
+| Horizontal adduction | 40-50°     |
 
 **Key insight:** Shoulder has the greatest range of any joint, but cannot exceed these limits. Signs that appear to show impossible shoulder positions indicate tracking errors.
 
@@ -133,6 +136,7 @@ dip_extension > 35  # Invalid
 ### 5.2 Joint Angle Calculation Helper
 
 For each joint, calculate the angle between:
+
 - **Parent bone vector** (e.g., forearm direction)
 - **Child bone vector** (e.g., hand direction)
 
@@ -161,24 +165,25 @@ def joint_validity_score(landmarks):
     """
     violations = 0
     total_checks = 0
-    
+
     # Check each joint against ROM limits
     # Weight by importance (fingers > wrist > elbow > shoulder)
-    
+
     # Example: Elbow check
     elbow_angle = calculate_elbow_angle(landmarks)
     if elbow_angle > 160 or elbow_angle < 10:
         violations += 1
     total_checks += 1
-    
+
     # ... additional checks ...
-    
+
     return 1.0 - (violations / total_checks)
 ```
 
 ### 6.3 Frame Rejection Criteria
 
 Reject frames where:
+
 - Joint validity score < 0.7
 - Multiple anatomically impossible configurations detected
 - Hand landmarks show finger crossing that violates joint constraints
@@ -198,10 +203,10 @@ def is_thumb_opposing(landmarks):
     Returns (is_opposing: bool, target_finger: int or None)
     """
     thumb_tip = landmarks[4]  # MediaPipe thumb tip
-    
+
     # Check distance to each fingertip
     fingertips = [8, 12, 16, 20]  # Index, middle, ring, pinky
-    
+
     for i, tip_idx in enumerate(fingertips):
         distance = np.linalg.norm(thumb_tip - landmarks[tip_idx])
         if distance < OPPOSITION_THRESHOLD:
@@ -209,7 +214,7 @@ def is_thumb_opposing(landmarks):
             # (not just passing by the finger)
             if thumb_is_perpendicular_to_palm(landmarks):
                 return True, i + 1  # 1=index, 2=middle, etc.
-    
+
     return False, None
 ```
 
@@ -220,38 +225,90 @@ def is_thumb_opposing(landmarks):
 Some joint positions constrain others:
 
 ### 8.1 Wrist-Finger Coupling
+
 - Extreme wrist **flexion** reduces finger **extension** ROM
 - Extreme wrist **extension** reduces finger **flexion** ROM
 
 ### 8.2 Finger Coupling (Tendons)
+
 - Ring and middle fingers often move together (shared tendons)
 - Pinky has some independence, but limited extension when ring is flexed
 - Index finger has greatest independence
 
 ### 8.3 Elbow-Shoulder Coupling
+
 - Shoulder abduction limited when elbow is fully extended
 - Internal rotation limited when elbow is extended
+
+---
+
+## 9. Finger Independence and Coupling (Lang & Schieber 2004)
+
+**Key findings (summarized):**
+
+- Finger independence is limited by both **passive mechanical coupling** (tendon linkages, soft tissue constraints) and **active neuromuscular control**.
+- Mechanical coupling affects index/middle/ring more strongly than thumb, and still impacts little finger.
+- Neuromuscular coupling primarily limits **ring and little fingers**, especially during larger movement arcs.
+- Passive coupling mechanisms include intertendinous connections (juncturae tendinum) and cross-connections among flexor tendons in the palm/forearm.
+
+**Implications for our renderer/validation:**
+
+- When one finger flexes, **adjacent fingers should show partial flexion**, with the strongest coupling in **ring ↔ little** and moderate coupling in **middle ↔ ring**.
+- Thumb should remain the most independent digit (less coupling impact).
+
+---
+
+## 10. Hand Function Context (NCBI InformedHealth)
+
+**Relevant points (summarized):**
+
+- Thumb’s **saddle joint** enables opposition, enabling precision grips.
+- Finger joints primarily **flex/extend** (hinge-like) rather than rotate.
+- Intrinsic hand muscles allow **abduction/adduction** (finger spread/close).
+
+**Implications for our renderer/validation:**
+
+- Open/spread should be modeled as **abduction/adduction** without changing finger lengths.
+- Pinch should show **thumb–index opposition** with slight flexion in other fingers.
+
+---
+
+## 11. EMG Gesture Insights (BioMedical Engineering OnLine 2015)
+
+**Key observations (summarized from EMG study):**
+
+- A small set of gestures (hand open, hand closed, thumb flexion, ring finger flexion, little finger flexion, middle finger flexion) provides strong separability in EMG space.
+- Forearm muscle activity emphasizes that **hand open/close and finger flexion** are reliable, distinct control primitives.
+
+**Implications for our probes:**
+
+- Keep **open/close** and **single-finger flexion** as core probe movements.
+- Consider adding isolated **ring** and **little finger flexion** probes later if we want higher sensitivity to coupling.
 
 ---
 
 ## 9. Implementation Roadmap
 
 ### Phase 1: Basic Validation
+
 - [ ] Implement elbow ROM validation
 - [ ] Implement wrist ROM validation
 - [ ] Add confidence penalty for violations
 
 ### Phase 2: Hand Validation
+
 - [ ] Implement finger MCP/PIP/DIP ROM validation
 - [ ] Implement thumb special handling (saddle joint)
 - [ ] Add thumb opposition detection
 
 ### Phase 3: Coupling Constraints
+
 - [ ] Implement wrist-finger coupling rules
 - [ ] Implement finger coupling rules
 - [ ] Add inter-joint constraint validation
 
 ### Phase 4: Integration
+
 - [ ] Integrate validation into signature extraction
 - [ ] Add frame rejection based on validity score
 - [ ] Log violations for debugging
@@ -268,21 +325,32 @@ Some joint positions constrain others:
    License: CC BY-SA  
    URL: https://www.physio-pedia.com/Range_of_Motion
 
-3. **American Academy of Orthopaedic Surgeons** - Joint ROM Norms
+3. **NCBI InformedHealth (IQWiG)** - In brief: How do hands work?  
+   URL: https://www.ncbi.nlm.nih.gov/books/NBK279362/
+
+4. **Lang & Schieber (2004)** - Human Finger Independence: Limitations due to Passive Mechanical Coupling Versus Active Neuromuscular Control  
+   Journal of Neurophysiology 92:2802–2810.  
+   DOI: 10.1152/jn.00480.2004
+
+5. **Castro et al. (2015)** - sEMG-based gesture separability in forearm muscles (BioMedical Engineering OnLine 14:30)  
+   File: 12938_2015_25_OnlinePDF.pdf
+
+6. **American Academy of Orthopaedic Surgeons** - Joint ROM Norms
 
 ---
 
 ## 11. Key Takeaways for Model Accuracy
 
-| Insight | Application |
-|---------|-------------|
-| Thumb has saddle joint | Allow greater movement range for thumb landmarks |
-| Fingers have hinge joints at IP | Constrain IP joints to flex/extend only |
-| Elbow is strictly hinge | Flag any lateral movement as tracking error |
-| Wrist allows deviation | But has strict limits (30° radial, 50° ulnar) |
-| Joint coupling exists | Validate combinations, not just individual joints |
+| Insight                         | Application                                       |
+| ------------------------------- | ------------------------------------------------- |
+| Thumb has saddle joint          | Allow greater movement range for thumb landmarks  |
+| Fingers have hinge joints at IP | Constrain IP joints to flex/extend only           |
+| Elbow is strictly hinge         | Flag any lateral movement as tracking error       |
+| Wrist allows deviation          | But has strict limits (30° radial, 50° ulnar)     |
+| Joint coupling exists           | Validate combinations, not just individual joints |
 
 **Bottom line:** By encoding these anatomical constraints, we can:
+
 1. **Reject bad frames** before they corrupt embeddings
 2. **Weight valid frames higher** in recognition
 3. **Detect tracking errors** vs. actual unusual poses

@@ -95,7 +95,6 @@ The model employs professional character modeling techniques:
 
 ## Recommendation
 
-**For your current stickman MVP:** These insights have minimal value.  
 **For future realistic body modeling:** The architectural patterns are worth remembering - especially the proxy/detail level management and rigging separation approach.
 
 Keep your MVP lightweight and skeleton-based. Revisit advanced mesh techniques only when you've validated recognition accuracy at the stick-figure level.

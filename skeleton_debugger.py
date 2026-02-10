@@ -37,12 +37,14 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 # Use new simpler skeleton renderer with compatibility layer
 from skeleton_renderer import (
-    SkeletonDrawerCompat as SkeletonDrawer, 
+    SkeletonDrawerCompat as SkeletonDrawer,
     extract_landmarks_from_signature,
     ReferenceBody,
-    CENTER_X, 
-    CENTER_Y, 
-    REFERENCE_SHOULDER_WIDTH
+    CENTER_X,
+    CENTER_Y,
+    REFERENCE_SHOULDER_WIDTH,
+    COLOR_LEFT_ARM,
+    COLOR_RIGHT_ARM,
 )
 
 
@@ -218,6 +220,16 @@ class SkeletonDebugger:
         
         cv2.putText(frame, status, (w - 200, 30), cv2.FONT_HERSHEY_SIMPLEX,
                    0.6, color, 2)
+
+    def _draw_legend(self, frame: np.ndarray) -> None:
+        """Draw minimal legend for left/right arm colors."""
+        x, y = 10, frame.shape[0] - 45
+        cv2.line(frame, (x, y), (x + 20, y), COLOR_LEFT_ARM, 3, cv2.LINE_AA)
+        cv2.putText(frame, "L arm", (x + 30, y + 5), cv2.FONT_HERSHEY_SIMPLEX,
+                   0.45, (200, 200, 200), 1)
+        cv2.line(frame, (x, y + 18), (x + 20, y + 18), COLOR_RIGHT_ARM, 3, cv2.LINE_AA)
+        cv2.putText(frame, "R arm", (x + 30, y + 23), cv2.FONT_HERSHEY_SIMPLEX,
+                   0.45, (200, 200, 200), 1)
     
     def _create_output_frame(self) -> np.ndarray:
         """Create current output frame(s)."""
@@ -253,8 +265,9 @@ class SkeletonDebugger:
         self._draw_frame_info(frame_blank, self.current_frame, total,
                              sig_name, lang)
         self._draw_normalization_info(frame_blank)
+        self._draw_legend(frame_blank)
         
-        help_text = "SPACE:play/pause | </>:frame | n:normalize | d:dots | r:replay | q:quit"
+        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit"
         cv2.putText(frame_blank, help_text, (10, frame_blank.shape[0] - 10),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
         
@@ -326,9 +339,10 @@ class SkeletonDebugger:
         # Add unified info
         self._draw_sync_info(combined)
         self._draw_normalization_info(combined)
+        self._draw_legend(combined)
         
         # Control help (smaller text to fit)
-        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit | HIGH CPU"
+        help_text = "SPACE:play/pause | </>:frame | n:norm | d:dots | r:replay | q:quit"
         cv2.putText(combined, help_text, (10, combined.shape[0] - 5),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
         

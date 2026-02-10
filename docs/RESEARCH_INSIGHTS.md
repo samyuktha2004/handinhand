@@ -505,29 +505,205 @@ Added learnable mask **M** on every ST-GCN layer:
 
 ---
 
-## 5. Papers Still Pending (Paywalled/Not Yet Reviewed)
+## 5. Das et al.: Bangla Sign Language Recognition with Transfer Learning + Random Forest
 
-| Paper                                 | Status       | Notes                   |
-| ------------------------------------- | ------------ | ----------------------- |
-| Deep Sign (Koller et al., IJCV 2018)  | ⏳ Pending   | Hybrid CNN-HMM approach |
-| Word-level SLR (Li et al., WACV 2020) | ⏳ Pending   | Dataset comparison      |
-| ScienceDirect S0167865522003804       | ❌ Paywalled | Could not access        |
-| ScienceDirect S1877050915021675       | ❌ Paywalled | Could not access        |
+### Citation
+
+```bibtex
+@article{das2023bsl_hybrid,
+  title={A hybrid approach for Bangla sign language recognition using deep transfer learning model with random forest classifier},
+  author={Das, Sunanda and Imtiaz, Md. Samir and Neom, Nieb Hasan and Siddique, Nazmul and Wang, Hui},
+  journal={Expert Systems With Applications},
+  volume={213},
+  pages={118914},
+  year={2023},
+  doi={10.1016/j.eswa.2022.118914}
+}
+```
+
+### Source Details
+
+| Field        | Value                                                                     |
+| ------------ | ------------------------------------------------------------------------- |
+| **Authors**  | Sunanda Das, Md. Samir Imtiaz, Nieb Hasan Neom, Nazmul Siddique, Hui Wang |
+| **Venue**    | Expert Systems With Applications (ESWA)                                   |
+| **Year**     | 2023                                                                      |
+| **DOI**      | 10.1016/j.eswa.2022.118914                                                |
+| **Datasets** | Ishara-Bochon (digits), Ishara-Lipi (alphabets)                           |
+
+### Key Technical Insights
+
+- Uses transfer learning (VGG16/19, InceptionV3, Xception, ResNet50) with Random Forest classifier for small datasets.
+- Introduces background elimination with morphological ops and adaptive Gaussian thresholding.
+- Reported results: ~91.7% accuracy for characters and ~97.3% for digits on BSL datasets.
+
+**Application to HandInHand:**
+
+- Reinforces transfer learning for small sign datasets; consider lightweight backbones for rapid baselines.
+- Background cleanup can improve landmark stability before pose extraction.
+
+---
+
+## 6. Roy et al.: Position/Rotation-Invariant SLR from 3D Kinect Data
+
+### Citation
+
+```bibtex
+@article{roy2025kinect_rnn,
+  title={Position and Rotation Invariant Sign Language Recognition from 3D Kinect Data with Recurrent Neural Networks},
+  author={Roy, Prasun and Bhattacharya, Saumik and Roy, Partha Pratim and Pal, Umapada},
+  journal={arXiv preprint arXiv:2010.12669v4},
+  year={2025}
+}
+```
+
+### Source Details
+
+| Field        | Value                                                           |
+| ------------ | --------------------------------------------------------------- |
+| **arXiv ID** | arXiv:2010.12669v4                                              |
+| **Authors**  | Prasun Roy, Saumik Bhattacharya, Partha Pratim Roy, Umapada Pal |
+| **Sensors**  | Kinect v1 (RGB + depth)                                         |
+| **Data**     | 20 body joints, 30 Indian sign gestures                         |
+| **Model**    | RNN/LSTM sequence classifier                                    |
+| **Accuracy** | 84.81%                                                          |
+
+### Key Technical Insights
+
+- Uses geometric alignment (affine transform) to correct rotation/position variance from depth sensors.
+- Sequence modeling on 3D joint trajectories improves robustness to signer orientation.
+
+**Application to HandInHand:**
+
+- Consider rigid alignment to a canonical shoulder plane before embedding for better invariance.
+
+---
+
+## 7. Anetha & Rejina: Hand Talk (Accelerometer + sEMG Glove)
+
+### Citation
+
+```bibtex
+@article{anetha2014handtalk,
+  title={Hand Talk - A Sign Language Recognition Based on Accelerometer and SEMG Data},
+  author={Anetha, K. and Rejina Parvin, J.},
+  journal={International Journal of Innovative Research in Computer and Communication Engineering},
+  volume={2},
+  number={Special Issue 3},
+  year={2014}
+}
+```
+
+### Source Details
+
+| Field       | Value                                        |
+| ----------- | -------------------------------------------- |
+| **Venue**   | IJIRCCE (Vol. 2, Special Issue 3, July 2014) |
+| **Sensors** | Flex sensors, 3-axis accelerometer, sEMG     |
+| **Task**    | Isolated ASL alphabet recognition            |
+
+### Key Technical Insights
+
+- Glove-based sensing captures finger bend + hand trajectory + muscle activity.
+- sEMG complements accelerometer data for gesture disambiguation in noisy settings.
+
+**Application to HandInHand:**
+
+- Highlights the value of multi-sensor fusion; for vision-only pipelines, mimic this by combining kinematics + dynamics features.
+
+---
+
+## 8. Ravikiran et al.: Finger Detection via Boundary Tracing
+
+### Citation
+
+```bibtex
+@inproceedings{ravikiran2009finger,
+  title={Finger Detection for Sign Language Recognition},
+  author={Ravikiran, J. and Mahesh, Kavi and Mahishi, Suhas and Dheeraj, R. and Sudheender, S. and Pujari, Nitin V.},
+  booktitle={Proceedings of the International MultiConference of Engineers and Computer Scientists (IMECS)},
+  year={2009}
+}
+```
+
+### Source Details
+
+| Field      | Value                                               |
+| ---------- | --------------------------------------------------- |
+| **Venue**  | IMECS 2009 (Hong Kong)                              |
+| **Method** | Canny edge + boundary tracing + fingertip detection |
+| **Claim**  | ~95% finger recognition in tests                    |
+
+### Key Technical Insights
+
+- Boundary tracing + fingertip detection can identify number of open fingers without gloves/markers.
+- Robust to small breaks in the contour by rejoining traces.
+
+**Application to HandInHand:**
+
+- Can serve as a lightweight fallback for finger-count verification on rendered masks.
+
+---
+
+## 9. Akdag & Baykan: Multi-Stream Finger Features from Pose Data (MDPI)
+
+### Citation
+
+```bibtex
+@article{akdag2024multistream,
+  title={Multi-Stream Isolated Sign Language Recognition Based on Finger Features Derived from Pose Data},
+  author={Akdag, Ali and Baykan, Omer Kaan},
+  journal={Electronics},
+  volume={13},
+  number={8},
+  pages={1591},
+  year={2024},
+  doi={10.3390/electronics13081591}
+}
+```
+
+### Key Technical Insights
+
+- Uses MediaPipe Holistic keypoints to render per-finger channels (FINGER), merged finger crops, and frame-difference (FD) finger motion.
+- PCA + SVM on fused features; high accuracy across multiple datasets.
+- Finger-only features are strong; face-only features are weak but improve when fused with hand/body.
+
+**Application to HandInHand:**
+
+- Supports multi-stream features (static + temporal) and finger-centric representations.
+- Frame-difference features can be emulated via temporal deltas in our embeddings.
+
+---
+
+## 10. Papers Still Pending (Paywalled/Not Yet Reviewed)
+
+| Paper                                 | Status        | Notes                                  |
+| ------------------------------------- | ------------- | -------------------------------------- |
+| Deep Sign (Koller et al., IJCV 2018)  | ⏳ Pending    | Hybrid CNN-HMM approach                |
+| Word-level SLR (Li et al., WACV 2020) | ⏳ Pending    | Dataset comparison                     |
+| ScienceDirect S0167865522003804       | ❌ Paywalled  | Could not access                       |
+| ScienceDirect S1877050915021675       | ❌ Paywalled  | Could not access                       |
+| 41598_2022_Article_15699 (Sci Rep)    | ❌ Unreadable | PDF error: incorrect startxref pointer |
 
 ---
 
 ## Legal Summary
 
-| Resource       | License      | Citation OK | Use Insights     | Commercial           |
-| -------------- | ------------ | ----------- | ---------------- | -------------------- |
-| SAM-SLR Paper  | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
-| ST-GCN Paper   | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
-| 2s-AGCN Paper  | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
-| Cleison et al. | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
-| SAM-SLR Code   | GitHub       | ✅ Yes      | ⚠️ Check license | ⚠️ Check license     |
-| OpenStax A&P   | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
-| Z-Anatomy      | CC BY-SA 4.0 | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
-| Physio-Pedia   | CC BY-SA     | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
+| Resource                 | License      | Citation OK | Use Insights     | Commercial           |
+| ------------------------ | ------------ | ----------- | ---------------- | -------------------- |
+| SAM-SLR Paper            | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| ST-GCN Paper             | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| 2s-AGCN Paper            | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| Cleison et al.           | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| Das et al. (BSL)         | CC BY-NC-ND  | ✅ Yes      | ✅ Yes           | ⚠️ Non-commercial    |
+| Roy et al. (Kinect)      | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| Hand Talk (IJIRCCE)      | Unknown      | ✅ Yes      | ✅ Yes           | ⚠️ Check venue       |
+| Finger Detection (IMECS) | Unknown      | ✅ Yes      | ✅ Yes           | ⚠️ Check venue       |
+| Akdag & Baykan (MDPI)    | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
+| SAM-SLR Code             | GitHub       | ✅ Yes      | ⚠️ Check license | ⚠️ Check license     |
+| OpenStax A&P             | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
+| Z-Anatomy                | CC BY-SA 4.0 | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
+| Physio-Pedia             | CC BY-SA     | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
 
 ---
 

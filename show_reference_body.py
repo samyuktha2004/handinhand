@@ -43,6 +43,7 @@ Uses exact MediaPipe landmark structure: 33 pose + 21 per hand.
 """
 import cv2
 import numpy as np
+import math
 
 # Frame dimensions
 WIDTH = 640
@@ -69,20 +70,30 @@ CENTER_X = WIDTH // 2
 CENTER_Y = HEIGHT // 2  # True center for balanced reach
 
 # Drawing colors (BGR format)
-BODY_COLOR = (0, 255, 0)       # Green - body outline
-LEFT_HAND_COLOR = (255, 0, 0)  # Blue - left hand
-RIGHT_HAND_COLOR = (0, 0, 255) # Red - right hand
-JOINT_COLOR = (0, 255, 255)    # Yellow - joints
-NECK_COLOR = (0, 200, 0)       # Darker green - neck
+BODY_COLOR = (0, 255, 0)        # Green - body outline
+LEFT_ARM_COLOR = (0, 94, 213)   # Wong Vermillion
+RIGHT_ARM_COLOR = (233, 180, 86)  # Wong Sky Blue
+JOINT_COLOR = (0, 255, 255)     # Yellow - joints
+NECK_COLOR = (0, 200, 0)        # Darker green - neck
 
-# Finger colors (BGR)
+# Finger colors (Wong palette, BGR)
 FINGER_COLORS = {
-    'thumb': (0, 0, 255),     # Red
-    'index': (0, 165, 255),   # Orange
-    'middle': (0, 255, 0),    # Green
-    'ring': (255, 0, 0),      # Blue
-    'pinky': (255, 0, 255),   # Purple
+    'thumb': (0, 159, 230),   # Orange
+    'index': (233, 180, 86),  # Sky blue
+    'middle': (115, 158, 0),  # Bluish green
+    'ring': (0, 94, 213),     # Vermillion
+    'pinky': (178, 114, 0),   # Blue
 }
+
+# Hand pose spread/curl limits (for demo only)
+MIN_SPREAD = 0.7
+MAX_SPREAD = 1.6
+MIN_CURL = 0.0
+MAX_CURL = 0.6
+
+# ROM limits (degrees)
+ELBOW_MIN_DEG = 10
+ELBOW_MAX_DEG = 170
 
 # Hand connections (21 landmarks per hand)
 # 0=wrist, 1-4=thumb, 5-8=index, 9-12=middle, 13-16=ring, 17-20=pinky
@@ -101,7 +112,59 @@ HAND_CONNECTIONS = [
     (5, 9), (9, 13), (13, 17),
 ]
 
-def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
+
+def _angle_between(v1, v2):
+    """Return angle between two vectors in radians."""
+    norm1 = math.hypot(v1[0], v1[1])
+    norm2 = math.hypot(v2[0], v2[1])
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    dot = v1[0] * v2[0] + v1[1] * v2[1]
+    cosang = max(-1.0, min(1.0, dot / (norm1 * norm2)))
+    return math.acos(cosang)
+
+
+def _apply_arm_constraints(shoulder, elbow, wrist):
+    """Normalize arm lengths and clamp elbow angle within ROM limits."""
+    sx, sy = shoulder
+    ex, ey = elbow
+    wx, wy = wrist
+
+    # Normalize upper arm length
+    upper_angle = math.atan2(ey - sy, ex - sx)
+    ex = int(sx + UPPER_ARM * math.cos(upper_angle))
+    ey = int(sy + UPPER_ARM * math.sin(upper_angle))
+
+    # Normalize lower arm length
+    lower_angle = math.atan2(wy - ey, wx - ex)
+    wx = int(ex + LOWER_ARM * math.cos(lower_angle))
+    wy = int(ey + LOWER_ARM * math.sin(lower_angle))
+
+    # Clamp elbow angle
+    v1 = (sx - ex, sy - ey)
+    v2 = (wx - ex, wy - ey)
+    angle = _angle_between(v1, v2)
+    min_ang = math.radians(ELBOW_MIN_DEG)
+    max_ang = math.radians(ELBOW_MAX_DEG)
+
+    if angle < min_ang or angle > max_ang:
+        base_angle = math.atan2(v1[1], v1[0])
+        v2_angle = math.atan2(v2[1], v2[0])
+        delta = v2_angle - base_angle
+        # Normalize to [-pi, pi]
+        while delta > math.pi:
+            delta -= 2 * math.pi
+        while delta < -math.pi:
+            delta += 2 * math.pi
+
+        clamped = max(min(delta, max_ang), min_ang) if delta >= 0 else min(max(delta, -max_ang), -min_ang)
+        new_angle = base_angle + clamped
+        wx = int(ex + LOWER_ARM * math.cos(new_angle))
+        wy = int(ey + LOWER_ARM * math.sin(new_angle))
+
+    return (ex, ey), (wx, wy)
+
+def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True, hand_pose="neutral"):
     """
     Generate 21 hand landmarks with proper palm structure.
     
@@ -122,6 +185,56 @@ def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
     seg = 10  # finger segment length
     palm_depth = 25  # wrist to MCP distance
     palm_width = 35  # width of palm at MCP level
+
+    # Hand pose controls (demo only)
+    spread_scale = 1.0
+    curl = 0.0
+    per_finger_curl = {
+        'index': 0.0,
+        'middle': 0.0,
+        'ring': 0.0,
+        'pinky': 0.0,
+        'thumb': 0.0,
+    }
+    if hand_pose == "open":
+        spread_scale = 1.2
+        curl = 0.0
+    elif hand_pose == "close":
+        spread_scale = 0.8
+        curl = 0.4
+        per_finger_curl = {
+            'index': 0.10,
+            'middle': 0.15,
+            'ring': 0.25,
+            'pinky': 0.30,
+            'thumb': 0.20,
+        }
+    elif hand_pose == "fist":
+        spread_scale = 0.75
+        curl = 0.6
+        per_finger_curl = {
+            'index': 0.20,
+            'middle': 0.30,
+            'ring': 0.40,
+            'pinky': 0.45,
+            'thumb': 0.35,
+        }
+    elif hand_pose == "spread":
+        spread_scale = 1.6
+        curl = 0.0
+    elif hand_pose == "pinch":
+        spread_scale = 1.0
+        curl = 0.3
+        per_finger_curl = {
+            'index': 0.15,
+            'middle': 0.20,
+            'ring': 0.30,
+            'pinky': 0.35,
+            'thumb': 0.20,
+        }
+
+    spread_scale = max(MIN_SPREAD, min(MAX_SPREAD, spread_scale))
+    curl = max(MIN_CURL, min(MAX_CURL, curl))
     
     # Direction multipliers
     if hand_direction == "up":
@@ -178,18 +291,25 @@ def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
     thumb_base_y = wy + dy * 3
     
     landmarks.append((int(thumb_base_x), int(thumb_base_y)))  # 1: CMC
-    
-    # Thumb extends outward and slightly in hand direction
-    t_dx = thumb_side * seg * 0.8
-    t_dy = dy * seg * 0.4
+
+    # Thumb direction with curl (length stays constant)
+    base_dir = math.atan2(dy, dx) if (dx != 0 or dy != 0) else math.pi / 2
+    thumb_angle = base_dir + (thumb_side * 0.6) + per_finger_curl.get('thumb', 0.0)
+    t_dx = math.cos(thumb_angle) * seg * 0.9
+    t_dy = math.sin(thumb_angle) * seg * 0.9
     landmarks.append((int(thumb_base_x + t_dx), int(thumb_base_y + t_dy)))  # 2: MCP
-    landmarks.append((int(thumb_base_x + t_dx * 1.8), int(thumb_base_y + t_dy * 1.5)))  # 3: IP
-    landmarks.append((int(thumb_base_x + t_dx * 2.5), int(thumb_base_y + t_dy * 2)))  # 4: TIP
+    landmarks.append((int(thumb_base_x + t_dx * 1.8), int(thumb_base_y + t_dy * 1.8)))  # 3: IP
+    landmarks.append((int(thumb_base_x + t_dx * 2.5), int(thumb_base_y + t_dy * 2.5)))  # 4: TIP
     
     # Generate fingers: index, middle, ring, pinky
     for finger, mcp_idx in [('index', 5), ('middle', 9), ('ring', 13), ('pinky', 17)]:
-        offset = mcp_offsets[finger]
-        angle = finger_angles[finger]
+        offset = mcp_offsets[finger] * spread_scale
+        max_offset = palm_width * 0.5
+        if offset > max_offset:
+            offset = max_offset
+        if offset < -max_offset:
+            offset = -max_offset
+        angle = finger_angles[finger] + per_finger_curl.get(finger, 0.0) + curl
         length = finger_lengths[finger]
         
         # MCP position (base of finger on palm)
@@ -200,13 +320,11 @@ def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
             mcp_x = palm_cx
             mcp_y = palm_cy + offset
         
-        # Finger direction with angle offset
-        if dy != 0:
-            f_dx = math.sin(angle) * length / 3
-            f_dy = dy * length / 3
-        else:
-            f_dx = dx * length / 3
-            f_dy = math.sin(angle) * length / 3
+        # Finger direction with curl offset (direction changes, length constant)
+        base_dir = math.atan2(dy, dx) if (dx != 0 or dy != 0) else math.pi / 2
+        finger_dir = base_dir + angle
+        f_dx = math.cos(finger_dir) * length / 3
+        f_dy = math.sin(finger_dir) * length / 3
         
         # 4 points per finger: MCP, PIP, DIP, TIP
         landmarks.append((int(mcp_x), int(mcp_y)))  # MCP
@@ -214,6 +332,14 @@ def generate_hand_landmarks(wrist_pos, hand_direction="down", is_left=True):
         landmarks.append((int(mcp_x + f_dx * 2), int(mcp_y + f_dy * 2)))  # DIP
         landmarks.append((int(mcp_x + f_dx * 3), int(mcp_y + f_dy * 3)))  # TIP
     
+    if hand_pose == "pinch":
+        thumb_tip = 4
+        index_tip = 8
+        mid_x = int((landmarks[thumb_tip][0] + landmarks[index_tip][0]) / 2)
+        mid_y = int((landmarks[thumb_tip][1] + landmarks[index_tip][1]) / 2)
+        landmarks[thumb_tip] = (mid_x, mid_y)
+        landmarks[index_tip] = (mid_x + (2 * mirror), mid_y)
+
     return landmarks
 
 def draw_hand(frame, landmarks, color):
@@ -368,6 +494,10 @@ def draw_reference_body(frame, hand_position="neutral"):
         right_wrist = (CENTER_X + 40, CENTER_Y - 20)
         hand_dir = "up"
     
+    # Enforce arm proportions and elbow ROM (keeps movements intact)
+    left_elbow, left_wrist = _apply_arm_constraints(left_shoulder, left_elbow, left_wrist)
+    right_elbow, right_wrist = _apply_arm_constraints(right_shoulder, right_elbow, right_wrist)
+
     # Draw spine (short - just upper body)
     cv2.line(frame, (CENTER_X, CENTER_Y), torso_bottom, BODY_COLOR, 3)
     
@@ -378,10 +508,10 @@ def draw_reference_body(frame, hand_position="neutral"):
     cv2.line(frame, left_shoulder, right_shoulder, BODY_COLOR, 3)
     
     # Draw arms
-    cv2.line(frame, left_shoulder, left_elbow, BODY_COLOR, 3)
-    cv2.line(frame, left_elbow, left_wrist, BODY_COLOR, 3)
-    cv2.line(frame, right_shoulder, right_elbow, BODY_COLOR, 3)
-    cv2.line(frame, right_elbow, right_wrist, BODY_COLOR, 3)
+    cv2.line(frame, left_shoulder, left_elbow, LEFT_ARM_COLOR, 3)
+    cv2.line(frame, left_elbow, left_wrist, LEFT_ARM_COLOR, 3)
+    cv2.line(frame, right_shoulder, right_elbow, RIGHT_ARM_COLOR, 3)
+    cv2.line(frame, right_elbow, right_wrist, RIGHT_ARM_COLOR, 3)
     
     # Draw face (oval with simplified facial features - industry standard)
     draw_face(frame, head_center, expression="neutral")
@@ -390,12 +520,17 @@ def draw_reference_body(frame, hand_position="neutral"):
     for joint in [left_shoulder, right_shoulder, left_elbow, right_elbow]:
         cv2.circle(frame, joint, 8, JOINT_COLOR, -1)
     
+    # Hand pose override (same arm positions)
+    hand_pose = "neutral"
+    if hand_position in {"open", "close", "spread", "pinch", "fist"}:
+        hand_pose = hand_position
+
     # Generate and draw hands with 21 landmarks each
-    left_hand = generate_hand_landmarks(left_wrist, hand_dir, is_left=True)
-    right_hand = generate_hand_landmarks(right_wrist, hand_dir, is_left=False)
+    left_hand = generate_hand_landmarks(left_wrist, hand_dir, is_left=True, hand_pose=hand_pose)
+    right_hand = generate_hand_landmarks(right_wrist, hand_dir, is_left=False, hand_pose=hand_pose)
     
-    draw_hand(frame, left_hand, LEFT_HAND_COLOR)
-    draw_hand(frame, right_hand, RIGHT_HAND_COLOR)
+    draw_hand(frame, left_hand, LEFT_ARM_COLOR)
+    draw_hand(frame, right_hand, RIGHT_ARM_COLOR)
     
     # Check if ALL hand landmarks are in bounds
     in_bounds = True
@@ -416,12 +551,12 @@ def draw_reference_body(frame, hand_position="neutral"):
     return in_bounds
 
 def main():
-    positions = ["neutral", "up", "down", "left", "right", "chest"]
+    positions = ["neutral", "up", "down", "left", "right", "chest", "open", "close", "spread", "pinch", "fist"]
     current_pos = 0
     
     print("Reference Body Viewer")
     print("=====================")
-    print("Press SPACE to cycle: neutral → up → down → left → right → chest")
+    print("Press SPACE to cycle: neutral → up → down → left → right → chest → open → close → spread → pinch → fist")
     print("Press Q to quit")
     print()
     

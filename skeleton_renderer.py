@@ -76,21 +76,26 @@ FINGER_ANGLES = {
 }
 
 # Colors (BGR)
-COLOR_BODY = (0, 255, 0)          # Green
+COLOR_BODY = (0, 255, 0)          # Green (reference body)
+COLOR_LEFT_ARM = (0, 94, 213)     # Wong Vermillion (left arm)
+COLOR_RIGHT_ARM = (233, 180, 86)  # Wong Sky Blue (right arm)
 COLOR_LEFT_HAND = (255, 100, 0)   # Blue-ish
 COLOR_RIGHT_HAND = (0, 100, 255)  # Red-ish
 COLOR_HEAD = (100, 180, 100)      # Light green
 COLOR_REFERENCE = (60, 60, 60)    # Dark grey
 COLOR_JOINT = (0, 255, 255)       # Yellow
 COLOR_ERROR = (0, 165, 255)       # Orange
+COLOR_MISSING_SEGMENT = (120, 120, 120)  # Dim gray
+COLOR_MISSING_DOT = (180, 180, 180)      # Light gray
 
 # Finger colors
 FINGER_COLORS = {
-    'thumb':  (0, 0, 255),     # Red
-    'index':  (0, 165, 255),   # Orange
-    'middle': (0, 255, 0),     # Green
-    'ring':   (255, 0, 0),     # Blue
-    'pinky':  (255, 0, 255),   # Purple
+    # Wong palette (colorblind-safe) in BGR
+    'thumb':  (0, 159, 230),   # Orange
+    'index':  (233, 180, 86),  # Sky blue
+    'middle': (115, 158, 0),   # Bluish green
+    'ring':   (0, 94, 213),    # Vermillion
+    'pinky':  (178, 114, 0),   # Blue
 }
 
 # Biological limits (radians)
@@ -114,6 +119,7 @@ class SkeletonRenderer:
         self.height = height
         self.center_x = width // 2
         self.center_y = height // 2  # Match reference body center
+        self.current_scale = 1.0
         
         # Reference positions (defaults when no data)
         self.ref_positions = self._compute_reference_positions()
@@ -167,8 +173,20 @@ class SkeletonRenderer:
         self._draw_arm(frame, positions, 'right')
         
         # Draw hands
-        self._draw_hand(frame, landmarks.get('left_hand'), positions.get('left_wrist'), 'left')
-        self._draw_hand(frame, landmarks.get('right_hand'), positions.get('right_wrist'), 'right')
+        self._draw_hand(
+            frame,
+            landmarks.get('left_hand'),
+            positions.get('left_wrist'),
+            'left',
+            positions.get('left_wrist_angle'),
+        )
+        self._draw_hand(
+            frame,
+            landmarks.get('right_hand'),
+            positions.get('right_wrist'),
+            'right',
+            positions.get('right_wrist_angle'),
+        )
         
         return frame
     
@@ -196,9 +214,24 @@ class SkeletonRenderer:
             right_elbow_raw = self._to_point(pose[3])
             left_wrist_raw = self._to_point(pose[4])
             right_wrist_raw = self._to_point(pose[5])
+
+            # Scale factor based on detected shoulder width (for proportion checks)
+            scale = 1.0
+            if left_shoulder_raw and right_shoulder_raw:
+                detected_width = self._distance(left_shoulder_raw, right_shoulder_raw)
+                if detected_width > 1.0:
+                    scale = detected_width / SHOULDER_WIDTH
+            scale = max(0.3, min(3.0, scale))
+            self.current_scale = scale
+
+            expected_upper = UPPER_ARM * scale
+            expected_lower = LOWER_ARM * scale
             
             # Elbows - follow detected angles from raw pose, fixed segment length
-            if left_shoulder_raw and left_elbow_raw:
+            if left_shoulder_raw and left_elbow_raw and self._is_reasonable_length(
+                self._distance(left_shoulder_raw, left_elbow_raw),
+                expected_upper,
+            ):
                 left_angle = self._angle_to(left_shoulder_raw, left_elbow_raw)
                 positions['left_elbow'] = self._point_at_angle(
                     positions['left_shoulder'],
@@ -208,7 +241,10 @@ class SkeletonRenderer:
             else:
                 positions['left_elbow'] = self.ref_positions['left_elbow']
             
-            if right_shoulder_raw and right_elbow_raw:
+            if right_shoulder_raw and right_elbow_raw and self._is_reasonable_length(
+                self._distance(right_shoulder_raw, right_elbow_raw),
+                expected_upper,
+            ):
                 right_angle = self._angle_to(right_shoulder_raw, right_elbow_raw)
                 positions['right_elbow'] = self._point_at_angle(
                     positions['right_shoulder'],
@@ -219,8 +255,12 @@ class SkeletonRenderer:
                 positions['right_elbow'] = self.ref_positions['right_elbow']
             
             # Wrists - follow detected angles from raw pose, fixed segment length
-            if left_elbow_raw and left_wrist_raw:
+            if left_elbow_raw and left_wrist_raw and self._is_reasonable_length(
+                self._distance(left_elbow_raw, left_wrist_raw),
+                expected_lower,
+            ):
                 left_wrist_angle = self._angle_to(left_elbow_raw, left_wrist_raw)
+                positions['left_wrist_angle'] = left_wrist_angle
                 positions['left_wrist'] = self._point_at_angle(
                     positions['left_elbow'],
                     left_wrist_angle,
@@ -229,8 +269,12 @@ class SkeletonRenderer:
             else:
                 positions['left_wrist'] = self.ref_positions['left_wrist']
             
-            if right_elbow_raw and right_wrist_raw:
+            if right_elbow_raw and right_wrist_raw and self._is_reasonable_length(
+                self._distance(right_elbow_raw, right_wrist_raw),
+                expected_lower,
+            ):
                 right_wrist_angle = self._angle_to(right_elbow_raw, right_wrist_raw)
+                positions['right_wrist_angle'] = right_wrist_angle
                 positions['right_wrist'] = self._point_at_angle(
                     positions['right_elbow'],
                     right_wrist_angle,
@@ -238,6 +282,19 @@ class SkeletonRenderer:
                 )
             else:
                 positions['right_wrist'] = self.ref_positions['right_wrist']
+
+            # Face center for dynamic head/neck (optional)
+            face = landmarks.get('face')
+            if face is not None and len(face) > 0:
+                face_points = []
+                for point in face:
+                    pt = self._to_point(point)
+                    if pt:
+                        face_points.append(pt)
+                if face_points:
+                    avg_x = int(sum(p[0] for p in face_points) / len(face_points))
+                    avg_y = int(sum(p[1] for p in face_points) / len(face_points))
+                    positions['face_center'] = (avg_x, avg_y)
         else:
             # No pose data - use all reference positions
             positions.update(self.ref_positions)
@@ -262,6 +319,17 @@ class SkeletonRenderer:
     def _distance(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         """Euclidean distance between two points."""
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+
+    def _is_reasonable_length(
+        self,
+        length: float,
+        expected: float,
+        min_ratio: float = 0.35,
+        max_ratio: float = 2.0,
+    ) -> bool:
+        if expected <= 0.0:
+            return False
+        return (expected * min_ratio) <= length <= (expected * max_ratio)
     
     def _angle_to(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         """Angle from p1 to p2 in radians."""
@@ -291,12 +359,21 @@ class SkeletonRenderer:
     def _draw_head_neck(self, frame: np.ndarray, positions: Dict) -> None:
         """Draw head and neck."""
         shoulder_center = positions.get('shoulder_center', (self.center_x, self.center_y))
-        
-        # Neck top (fixed distance above shoulders)
-        neck_top = (shoulder_center[0], shoulder_center[1] - NECK_LENGTH)
-        
-        # Head center (fixed distance above neck)
-        head_center = (shoulder_center[0], neck_top[1] - HEAD_HEIGHT // 2)
+
+        face_center = positions.get('face_center')
+        if face_center:
+            # Clamp head x near shoulders to avoid large offsets
+            max_dx = SHOULDER_WIDTH // 2
+            head_x = max(shoulder_center[0] - max_dx, min(face_center[0], shoulder_center[0] + max_dx))
+            head_center = (head_x, face_center[1])
+
+            desired_neck_top_y = head_center[1] + (HEAD_HEIGHT // 2)
+            neck_top_y = min(desired_neck_top_y, shoulder_center[1] - 5)
+            neck_top = (head_x, neck_top_y)
+        else:
+            # Fallback to fixed neck length
+            neck_top = (shoulder_center[0], shoulder_center[1] - NECK_LENGTH)
+            head_center = (shoulder_center[0], neck_top[1] - HEAD_HEIGHT // 2)
         
         # Draw
         cv2.line(frame, shoulder_center, neck_top, COLOR_HEAD, 2, cv2.LINE_AA)
@@ -328,18 +405,26 @@ class SkeletonRenderer:
         if not all([shoulder, elbow, wrist]):
             return
         
+        arm_color = COLOR_LEFT_ARM if side == 'left' else COLOR_RIGHT_ARM
+
         # Draw upper arm (shoulder → elbow)
-        cv2.line(frame, shoulder, elbow, COLOR_BODY, 2, cv2.LINE_AA)
+        cv2.line(frame, shoulder, elbow, arm_color, 2, cv2.LINE_AA)
         
         # Draw lower arm (elbow → wrist)
-        cv2.line(frame, elbow, wrist, COLOR_BODY, 2, cv2.LINE_AA)
+        cv2.line(frame, elbow, wrist, arm_color, 2, cv2.LINE_AA)
         
         # Draw joints
         for pt in [shoulder, elbow, wrist]:
             cv2.circle(frame, pt, 4, COLOR_JOINT, -1, cv2.LINE_AA)
     
-    def _draw_hand(self, frame: np.ndarray, hand_data: Optional[np.ndarray], 
-                   wrist_pos: Optional[Tuple[int, int]], side: str) -> None:
+    def _draw_hand(
+        self,
+        frame: np.ndarray,
+        hand_data: Optional[np.ndarray],
+        wrist_pos: Optional[Tuple[int, int]],
+        side: str,
+        wrist_angle: Optional[float] = None,
+    ) -> None:
         """Draw hand with fixed proportions."""
         if wrist_pos is None:
             return
@@ -354,15 +439,15 @@ class SkeletonRenderer:
             max_val = np.abs(hand_data[:, :2]).max()
             wrist_val = np.abs(hand_data[0, :2]).max() if len(hand_data) > 0 else 0.0
             valid_points = int(np.sum(np.abs(hand_data[:, :2]).max(axis=1) > 1.0))
-            # Treat missing/invalid wrist or too few valid points as no hand data
-            has_valid_hand = (max_val > 1.0) and (wrist_val > 1.0) and (valid_points >= 6)
+            # Allow partial hand data; still require a valid wrist
+            has_valid_hand = (max_val > 1.0) and (wrist_val > 1.0) and (valid_points >= 3)
         
         if has_valid_hand:
             # Draw actual hand data with fixed-size fingers
             self._draw_hand_from_data(frame, hand_data, wrist_pos, side)
         else:
             # Draw neutral reference hand
-            self._draw_neutral_hand(frame, wrist_pos, side)
+            self._draw_neutral_hand(frame, wrist_pos, side, wrist_angle, use_missing_style=True)
     
     def _draw_hand_from_data(self, frame: np.ndarray, hand_data: np.ndarray,
                              wrist_pos: Tuple[int, int], side: str) -> None:
@@ -381,7 +466,7 @@ class SkeletonRenderer:
         offset_y = wrist_pos[1] - data_wrist[1]
         
         # Maximum reasonable hand span (wrist to fingertip)
-        max_hand_span = 150  # pixels
+        max_hand_span = 150 * self.current_scale  # pixels
         
         # Finger landmark indices (MediaPipe hand model)
         finger_indices = {
@@ -414,14 +499,25 @@ class SkeletonRenderer:
                     cv2.line(frame, wrist_pos, pt, COLOR_BODY, 1, cv2.LINE_AA)
         for i in range(len(mcp_points) - 1):
             cv2.line(frame, mcp_points[i], mcp_points[i + 1], COLOR_BODY, 1, cv2.LINE_AA)
+
+        # Palm width validation (index MCP to pinky MCP)
+        if len(mcp_points) >= 2:
+            palm_span = self._distance(mcp_points[0], mcp_points[-1])
+            expected_palm = PALM_WIDTH * self.current_scale
+            if not self._is_reasonable_length(palm_span, expected_palm, min_ratio=0.5, max_ratio=2.0):
+                self._draw_neutral_hand(frame, wrist_pos, side)
+                return
         
         segments_drawn = 0
         for finger_name, indices in finger_indices.items():
             color = FINGER_COLORS[finger_name]
             lengths = expected_lengths(finger_name)
             
-            # Draw finger segments with validation
+            # Collect finger segments with validation
             prev_valid = True
+            finger_segments_drawn = 0
+            finger_incomplete = False
+            segments = []
             for i in range(len(indices) - 1):
                 idx1, idx2 = indices[i], indices[i + 1]
                 
@@ -435,6 +531,7 @@ class SkeletonRenderer:
                     # Validate points are in bounds
                     if not (self._in_bounds(pt1[0], pt1[1]) and self._in_bounds(pt2[0], pt2[1])):
                         prev_valid = False
+                        finger_incomplete = True
                         break
                     
                     # Validate points are reasonable distance from wrist (no floating points)
@@ -442,6 +539,7 @@ class SkeletonRenderer:
                     dist2 = self._distance(wrist_pos, pt2)
                     if dist1 > max_hand_span or dist2 > max_hand_span:
                         prev_valid = False
+                        finger_incomplete = True
                         break
                     
                     # Validate segment length against expected proportions
@@ -452,10 +550,16 @@ class SkeletonRenderer:
                         max_len = expected * 2.0
                         if not (min_len <= seg_len <= max_len):
                             prev_valid = False
+                            finger_incomplete = True
                             break
-                    
-                    cv2.line(frame, pt1, pt2, color, 2, cv2.LINE_AA)
-                    segments_drawn += 1
+
+                        segments.append((pt1, pt2))
+                        segments_drawn += 1
+                        finger_segments_drawn += 1
+
+            draw_color = COLOR_MISSING_SEGMENT if finger_incomplete else color
+            for pt1, pt2 in segments:
+                cv2.line(frame, pt1, pt2, draw_color, 2, cv2.LINE_AA)
             
             # Draw fingertip dot with validation
             tip_idx = indices[-1]
@@ -464,14 +568,21 @@ class SkeletonRenderer:
                        int(hand_data[tip_idx][1] + offset_y))
                 dist = math.sqrt((tip[0] - wrist_pos[0])**2 + (tip[1] - wrist_pos[1])**2)
                 
-                if self._in_bounds(tip[0], tip[1]) and dist <= max_hand_span:
-                    cv2.circle(frame, tip, 3, color, -1, cv2.LINE_AA)
+                if finger_segments_drawn > 0 and self._in_bounds(tip[0], tip[1]) and dist <= max_hand_span:
+                    tip_color = COLOR_MISSING_DOT if finger_incomplete else color
+                    cv2.circle(frame, tip, 3, tip_color, -1, cv2.LINE_AA)
 
         if segments_drawn == 0:
-            self._draw_neutral_hand(frame, wrist_pos, side)
+            self._draw_neutral_hand(frame, wrist_pos, side, use_missing_style=True)
     
-    def _draw_neutral_hand(self, frame: np.ndarray, wrist_pos: Tuple[int, int], 
-                           side: str) -> None:
+    def _draw_neutral_hand(
+        self,
+        frame: np.ndarray,
+        wrist_pos: Tuple[int, int],
+        side: str,
+        wrist_angle: Optional[float] = None,
+        use_missing_style: bool = False,
+    ) -> None:
         """Draw neutral/rest hand when no data available with proper palm structure."""
         is_left = (side == 'left')
         mirror = -1 if is_left else 1
@@ -483,14 +594,23 @@ class SkeletonRenderer:
             return
         
         # Draw palm structure: wrist to distributed finger bases
+        base_down_angle = math.pi / 2
+        rotation = (wrist_angle - base_down_angle) if wrist_angle is not None else 0.0
+        cos_r = math.cos(rotation)
+        sin_r = math.sin(rotation)
         palm_bases = {}
         for finger_name, x_offset in FINGER_BASE_OFFSETS.items():
             if finger_name == 'thumb':
                 # Thumb base is at wrist level, offset to side
-                base = (wx + mirror * abs(x_offset), wy + 5)
+                dx, dy = (mirror * abs(x_offset), 5)
             else:
                 # Other fingers: base at MCP line (knuckles), horizontally distributed
-                base = (wx + mirror * x_offset, wy + PALM_LENGTH)
+                dx, dy = (mirror * x_offset, PALM_LENGTH)
+
+            # Rotate base offset to align with wrist direction
+            rot_x = int(dx * cos_r - dy * sin_r)
+            rot_y = int(dx * sin_r + dy * cos_r)
+            base = (wx + rot_x, wy + rot_y)
             
             palm_bases[finger_name] = base
             
@@ -500,7 +620,7 @@ class SkeletonRenderer:
         
         # Draw each finger from its base position
         for finger_name, base_angle in FINGER_ANGLES.items():
-            color = FINGER_COLORS[finger_name]
+            color = COLOR_MISSING_SEGMENT if use_missing_style else FINGER_COLORS[finger_name]
             lengths = FINGER_LENGTHS[finger_name]
             start = palm_bases[finger_name]
             
@@ -509,7 +629,7 @@ class SkeletonRenderer:
                 continue
             
             # Mirror angle for left hand
-            angle = base_angle * mirror + (math.pi / 2)  # Point downward
+            angle = base_angle * mirror + (wrist_angle if wrist_angle is not None else base_down_angle)
             
             # Draw finger segments with validation
             current = start
@@ -540,7 +660,8 @@ class SkeletonRenderer:
             
             # Fingertip dot (only if last segment was valid)
             if prev_valid and self._in_bounds(current[0], current[1]):
-                cv2.circle(frame, current, 2, color, -1)
+                dot_color = COLOR_MISSING_DOT if use_missing_style else color
+                cv2.circle(frame, current, 2, dot_color, -1)
 
 
 # =============================================================================
@@ -693,6 +814,9 @@ class SkeletonDrawerCompat:
         
         if len(landmarks) >= 48:  # 6 + 21 + 21
             landmarks_dict['right_hand'] = landmarks[27:48]
+
+        if len(landmarks) >= 52:  # 6 + 21 + 21 + 4
+            landmarks_dict['face'] = landmarks[48:52]
         
         # Use renderer but draw on existing frame (not blank)
         positions = renderer._extract_positions(landmarks_dict)
@@ -711,10 +835,20 @@ class SkeletonDrawerCompat:
         renderer._draw_arm(frame, positions, 'right')
         
         # Draw hands
-        renderer._draw_hand(frame, landmarks_dict.get('left_hand'), 
-                           positions.get('left_wrist'), 'left')
-        renderer._draw_hand(frame, landmarks_dict.get('right_hand'), 
-                           positions.get('right_wrist'), 'right')
+        renderer._draw_hand(
+            frame,
+            landmarks_dict.get('left_hand'),
+            positions.get('left_wrist'),
+            'left',
+            positions.get('left_wrist_angle'),
+        )
+        renderer._draw_hand(
+            frame,
+            landmarks_dict.get('right_hand'),
+            positions.get('right_wrist'),
+            'right',
+            positions.get('right_wrist_angle'),
+        )
         
         return frame
 

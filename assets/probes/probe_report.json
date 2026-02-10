@@ -1,0 +1,51 @@
+{
+  "probes": {
+    "probe_close": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_down": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_left": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_open": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_pinch": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_right": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_spread": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    },
+    "probe_up": {
+      "frames": 12,
+      "issues": [],
+      "embedding_saved": true
+    }
+  },
+  "pair_checks": {
+    "up_vs_down": 0.9455428719520569,
+    "left_vs_right": 0.8956705331802368,
+    "open_vs_close": 0.9982515573501587,
+    "spread_vs_close": 0.9965996146202087,
+    "pinch_vs_close": 0.9986447691917419
+  }
+}

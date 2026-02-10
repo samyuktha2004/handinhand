@@ -46,7 +46,6 @@ COLOR DESIGN ASSESSMENT: HandInHand Skeleton Visualizer v1
 2. ❌ Users may not know which type they need
 3. ❌ Must maintain/test multiple palettes
 4. ❌ Toggle state must persist across sessions
-5. ❌ For v1 MVP, adds scope/complexity
 
 ### MITIGATION STRATEGIES:
 1. **Start with Wong Palette (universal colorblind-safe)**

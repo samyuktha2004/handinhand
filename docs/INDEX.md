@@ -1,11 +1,15 @@
 # Documentation Index
 
-## Start Here
+## Quick Links
 
-1. [QUICK_START.md](QUICK_START.md) - Get running in 5 minutes
-2. [progress.md](progress.md) - Current status & next steps
+- **Running the system?** → [QUICK_START.md](QUICK_START.md)
+- **Installing?** → [SETUP.md](SETUP.md)
+- **Current status?** → [progress.md](progress.md)
+- **How it works?** → [RECOGNITION_ENGINE_DESIGN.md](RECOGNITION_ENGINE_DESIGN.md)
+- **What are we building?** → [PRD.md](PRD.md)
+- **Contributing code?** → [GUIDELINES.md](GUIDELINES.md)
 
----
+
 
 ## Active Documentation (7 files)
 
@@ -17,14 +21,3 @@
 | RECOGNITION_ENGINE_DESIGN.md | How it works             | Architects       |
 | PRD.md                       | Requirements             | PM, stakeholders |
 | GUIDELINES.md                | Rules for contributors   | All contributors |
-
----
-
-## Quick Links
-
-- **Running the system?** → [QUICK_START.md](QUICK_START.md)
-- **Installing?** → [SETUP.md](SETUP.md)
-- **Current status?** → [progress.md](progress.md)
-- **How it works?** → [RECOGNITION_ENGINE_DESIGN.md](RECOGNITION_ENGINE_DESIGN.md)
-- **What are we building?** → [PRD.md](PRD.md)
-- **Contributing code?** → [GUIDELINES.md](GUIDELINES.md)

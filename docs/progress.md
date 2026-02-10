@@ -1,12 +1,47 @@
 # Progress Log
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
-**Last Updated:** February 2, 2026  
+**Last Updated:** February 10, 2026  
 **Status:** 🔄 Phase 4 - Signature Quality & Facial Features Planning
 
 ---
 
 ## Current Status
+
+### Feb 10, 2026 - Reference Body Hardening + Probe Generator
+
+**Completed:**
+
+- Wrist-aligned neutral hand fallback in renderer (hands follow forearm angle).
+- Softened hand validation to reduce mid-frame dropouts.
+- Dynamic head/neck when face landmarks exist.
+- Arm proportion checks based on detected shoulder scale.
+- Palm width validation + connector continuity.
+- Wong palette applied for finger colors (body remains green).
+- Generated probe JSONs and evaluation report (`assets/probes/probe_report.json`).
+- Refined probes to move limbs relative to fixed shoulders (no full-body translation).
+- Enforced elbow ROM and arm length constraints in reference body demo.
+- Aligned probe directions to reference body movements.
+- Added hand pose modes in reference body demo (open/close/spread/pinch).
+- Applied Wong palette arm colors in reference body demo.
+
+**In Progress:**
+
+- Probe embeddings currently show near-identical cosine similarity (likely due to shoulder-centering).
+
+**Current probe report (after refinement):**
+
+- up_vs_down: 0.9455
+- left_vs_right: 0.8957
+- open_vs_close: 0.9983
+- spread_vs_close: 0.9966
+- pinch_vs_close: 0.9986
+
+**Next:**
+
+- Adjust probes to move limbs relative to shoulder center (avoid full-body translation).
+- Consider a probe-only embedding mode without shoulder centering for diagnostics.
+- Increase hand-shape probe separation so open/close/spread/pinch diverge.
 
 ### Feb 9, 2026 - Renderer + Embedding Alignment
 
