@@ -21,9 +21,10 @@
 Before creating a new doc, check:
 
 1. Can this go in **progress.md**? (Status/decisions)
-2. Can this go in **QUICK_START.md**? (How to run)
+2. Can this go in **QUICK_START.md** or **TESTING.md**? (How to run, commands)
 3. Can this go in **SETUP.md**? (Installation)
 4. Can this go in **RECOGNITION_ENGINE_DESIGN.md**? (How it works)
+5. Can this go in **PROJECT_OVERVIEW.md**? (What we're building)
 
 **If yes to any of above:** Update that file. Don't create new doc.
 
@@ -37,14 +38,24 @@ Before creating a new doc, check:
 
 ## Active Documentation (Source of Truth)
 
-These 6 files are THE documentation. Everything else is archived/supplementary:
+**Tier 1 — Updated frequently (project record):**
 
 1. **progress.md** ⭐ - Status & decisions (update daily/weekly)
-2. **PRD.md** - What we're building & why
-3. **QUICK_START.md** - How to run it
-4. **SETUP.md** - Installation (code examples OK here only)
-5. **RECOGNITION_ENGINE_DESIGN.md** - How it works (reference)
-6. **INDEX.md** - Navigation hub (links to these + archived)
+2. **PRD.md** - Requirements & phase roadmap
+3. **PROJECT_OVERVIEW.md** - Plain-language brief for new readers
+4. **INDEX.md** - Navigation hub
+
+**Tier 2 — Updated when architecture changes (reference):**
+
+5. **RECOGNITION_ENGINE_DESIGN.md** - How recognition works
+6. **SETUP.md** - Installation (code examples OK here only)
+7. **QUICK_START.md** - How to run it (commands only, no explanation)
+8. **TESTING.md** - All test commands
+9. **STACK_UPDATES.md** - Engineering changelog
+
+**Phase-specific (active while the phase is running):**
+
+- **REFERENCE_BODY_SPEC.md** - Phase 3 reference body specification (remove after Phase 3)
 
 ---
 
@@ -58,14 +69,17 @@ These 6 files are THE documentation. Everything else is archived/supplementary:
 
 ```
 /docs/
+├── progress.md                   ← Update frequently
 ├── PRD.md                        ← Update when requirements change
-├── progress.md                   ← Update DAILY with status
-├── QUICK_START.md               ← Update when setup changes
-├── SETUP.md                     ← Update when dependencies change
-├── RECOGNITION_ENGINE_DESIGN.md ← Reference (rarely changes)
+├── PROJECT_OVERVIEW.md          ← Update at major milestones
 ├── INDEX.md                     ← Navigation hub
-├── GUIDELINES.md                ← This file
-└── ARCHIVE.md                   ← Links to all historical docs
+├── RECOGNITION_ENGINE_DESIGN.md ← Reference (update with architecture changes)
+├── SETUP.md                     ← Update when dependencies change
+├── QUICK_START.md               ← Update when setup changes (commands only)
+├── TESTING.md                   ← All test commands
+├── STACK_UPDATES.md             ← Engineering changelog
+├── REFERENCE_BODY_SPEC.md       ← Phase 3 spec (remove after Phase 3)
+└── GUIDELINES.md                ← This file
 ```
 
 No subfolders. No migration/. No archive/ folder. Flat structure only.
@@ -176,12 +190,9 @@ Users know where to find history, but it's not cluttering active docs.
 
 ## Summary
 
-**Active Docs:** 6 files  
-**Archived Docs:** 1 reference page (ARCHIVE.md)  
-**Total:** ~7 files in /docs/
-
-**Before:** 40+ files spread across folders  
-**After:** 7 files, flat structure, clear purpose
+**Active Docs:** 9 permanent + 1 phase-specific
+**Deleted (Feb 2026):** FEATURES.md, CODE_AUDIT.md, TECH_LEAD_ASSESSMENT.md, color_accessibility.md, BODY_MODEL_INSIGHTS.md
+**Total:** 10 files in /docs/ (+ 2 in /docs/research_insights/)
 
 This is sustainable and scales.
 

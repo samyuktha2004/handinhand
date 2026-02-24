@@ -19,6 +19,25 @@
 
 ---
 
+## ⚠️ Known Embedding Mismatch (Phase 4 Fix Required)
+
+**Current state** (`recognition_engine.py`):
+- Loads `hello_mean.npy` (joint-only, 156 dims zero-padded to 512)
+- `_compute_live_embedding()` computes joint coordinates only — no bone vectors, no motion deltas
+
+**Available but not yet connected** (`generate_embeddings.py` lines 203–247):
+- Saves `hello_mean_combined.npy` — 4-stream: joint + bone vectors + joint motion + bone motion
+- Combined dims: 156 + 102 + 156 + 102 = 516 → truncated to 512
+
+**Impact:** Both sides are internally consistent (both joint-only), so the 0.7339 recognition score is stable. But the combined stream — which carries hand shape and motion direction information — is completely unused.
+
+**Fix (Phase 4, item 4a):**
+1. Update `embedding_mean_file` in `assets/registries/asl_registry.json` and `bsl_registry.json` to point to `*_combined.npy` paths
+2. Update `_compute_live_embedding()` in `recognition_engine.py` to mirror the 4-stream logic from `generate_embeddings.py`
+3. Verify: run `test_recognition_quality.py` — score must stay at 0.7339 or improve
+
+---
+
 ## 4-Tier Recognition System
 
 ### **Tier 1: Frame Range Validation** (in wlasl_pipeline.py)

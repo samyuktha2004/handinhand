@@ -79,8 +79,8 @@ def _build_hand(wrist: Tuple[float, float], mode: str, mirror: int) -> List[List
         curl = 0.0
         length_scale = 1.0
     elif mode == "close":
-        spread = 0.8
-        curl = 0.35
+        spread = 0.6   # Tighter finger grouping (real fist)
+        curl = 0.52    # PIP~90°, tips fold back toward palm (curl*3 ≈ π/2)
         length_scale = 0.7
     elif mode == "spread":
         spread = 1.6
@@ -126,6 +126,15 @@ def _build_hand(wrist: Tuple[float, float], mode: str, mirror: int) -> List[List
     if len(points) < 21:
         points.extend([points[-1]] * (21 - len(points)))
     points = points[:21]
+
+    # Close/fist: thumb wraps over index/middle fingers (biological fist anatomy)
+    if mode == "close":
+        index_mcp = points[5]   # Index MCP is landmark index 5
+        thumb_tip_idx = 4
+        # Pull thumb tip 60% of the way toward index MCP (thumb over fingers)
+        tx = points[thumb_tip_idx][0] * 0.4 + index_mcp[0] * 0.6
+        ty = points[thumb_tip_idx][1] * 0.4 + index_mcp[1] * 0.6
+        points[thumb_tip_idx] = (tx, ty)
 
     # Pinch: bring thumb + index tips together
     if mode == "pinch":
@@ -199,9 +208,14 @@ def build_probe_sequence(name: str, steps: int = 12) -> Dict:
         pose = _build_pose(shoulder_center, neutral_left, neutral_right)
         left_wrist = (pose[4][0] * WIDTH, pose[4][1] * HEIGHT)
         right_wrist = (pose[5][0] * WIDTH, pose[5][1] * HEIGHT)
-        for _ in range(steps):
-            left_hand = _build_hand(left_wrist, name, mirror=-1)
-            right_hand = _build_hand(right_wrist, name, mirror=1)
+        # Animate: first half neutral, second half target shape.
+        # GAP will average the transition → embedding is distinct from static poses.
+        # This also matches real signing: hand moves into shape, not teleports.
+        half = steps // 2
+        for i in range(steps):
+            frame_mode = "neutral" if i < half else name
+            left_hand = _build_hand(left_wrist, frame_mode, mirror=-1)
+            right_hand = _build_hand(right_wrist, frame_mode, mirror=1)
             frames.append(_frame_dict(pose, left_hand, right_hand))
 
     return {

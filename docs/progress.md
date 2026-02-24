@@ -2,13 +2,93 @@
 
 **Project:** HandInHand - Cross-Lingual Sign Language Recognition  
 **Last Updated:** February 10, 2026  
-**Status:** 🔄 Phase 4 - Signature Quality & Facial Features Planning
+**Status:** 🔄 Phase 3 - Rendering & Cleanup
 
 ---
 
 ## Current Status
 
-### Feb 10, 2026 - Reference Body Hardening + Probe Generator
+### Feb 24, 2026 — Architecture Review & Documentation Restructure
+
+**Critical Findings:**
+
+1. **4-stream combined embedding is coded but not wired to recognition engine.**
+   - `generate_embeddings.py` (lines 203–247) already implements joint + bone + joint motion + bone motion streams, saving `hello_mean_combined.npy`.
+   - `recognition_engine.py` (lines 115–118) still loads the old `hello_mean.npy` (joint-only, 156 dims zero-padded to 512).
+   - `_compute_live_embedding()` is also joint-only. Both sides are internally consistent — 0.7339 score is stable — but the combined stream is completely unused.
+   - **Phase 4 first task: update registry JSON paths to `*_combined.npy` + mirror 4-stream logic in `_compute_live_embedding()`. This is a wiring task, not new code.**
+
+2. **Probe similarity problem (0.9983 open/close) is a DATA problem, not architecture.**
+   - Probes move the entire skeleton (full-body translation, e.g., whole body shifts up).
+   - Shoulder-centering normalization cancels full-body translation → open and closed hands produce near-identical embeddings.
+   - Fix: Regenerate probes so hands move relative to a fixed shoulder position.
+   - After both fixes (probe data + wired combined embeddings), expect open/close similarity < 0.50.
+
+3. **Display fix coordinate space must be verified before reapplying.**
+   - Attempt 5 failed because `extract_landmarks_from_signature()` returns pixel coordinates (X≈422), not 0–1 normalized.
+   - Before rewriting the scaling function: `print(frames[0]['pose'][0])` to confirm actual coordinate values.
+
+**Phase 3 Remaining Work (ordered):**
+
+1. Codebase cleanup — delete 30+ debug scripts (list below)
+2. Fix skeleton debugger display scaling (verify coordinate space first)
+3. Fix probe data (relative hand movement, not full-body translation)
+4. Documentation restructure (completed this session)
+5. Facial landmark integration (mouth corners + lip center alongside existing eyebrow points)
+
+**Codebase Cleanup — Files to Delete:**
+
+Root diagnostic scripts:
+`analyze_frame_quality.py`, `analyze_hand_dropouts.py`, `analyze_signature.py`,
+`assess_2d_model_limits.py`, `check_all_quality.py`, `check_blue_dot.py`,
+`check_embedding_source.py`, `check_signatures.py`, `check_wlasl.py`, `check_you_quality.py`,
+`compare_signatures.py`, `compute_canonical_bbox.py`, `debug_bbox.py`, `diagnose_blue_dot.py`,
+`run_skeleton_debugger.py`, `trace_all_gestures.py`, `trace_hello_logic.py`,
+`verify_actual_display.py`, `verify_dual_window_fix.py`, `verify_go_in_frame.py`
+
+Test scripts (keep `test_recognition_quality.py`, delete the rest):
+`test_all_bounds.py`, `test_asl_vs_bsl.py`, `test_bbox_simple.py`, `test_go_frame.py`,
+`test_hello_visual.sh`, `test_recognition_smoothed.py`, `test_scaling_logic.py`,
+`test_shoulder_width.py`, `test_single_accuracy.py`, `test_skeleton_debugger.py`,
+`test_skeleton_render.py`, `test_where_impact.py`
+
+Root-level clutter:
+`canonical_bbox.json`, `IMPLEMENTATION_PLAN.md`, `RE_EXTRACTION_PLAN.md`,
+`SHOULDER_WIDTH_ASSESSMENT.md`, `DELIVERY_COMPLETE.txt`, `install.log`, `pipeline_test.log`
+
+Triple-smoothed signatures (keep originals + single-smoothed only):
+`assets/signatures/asl/hello_0_smoothed_smoothed.json`,
+`assets/signatures/asl/hello_0_smoothed_smoothed_smoothed.json`,
+`assets/signatures/asl/where_0_smoothed_smoothed.json`,
+`assets/signatures/asl/where_0_smoothed_smoothed_smoothed.json`
+
+**Biological Accuracy Fixes Applied (Feb 24, continued):**
+
+- `skeleton_renderer.py:670` — Neutral hand cascade curl: `0.05 * i` → `0.12 * i`
+  (MCP~8°, PIP~14°, DIP~21° cumulative — natural relaxed posture, not flat paddle)
+- `generate_motion_probes.py` — Fist/close mode: curl 0.35 → 0.52, spread 0.8 → 0.6
+  (tips now fold toward palm at ~89°, matching PIP~90° in real fist anatomy)
+- `generate_motion_probes.py` — Thumb wrapping: pulls thumb tip 60% toward index MCP
+  (biologically correct: thumb wraps over index/middle fingers in a fist)
+- `generate_motion_probes.py:198-205` — Probe animation: 6 neutral + 6 target frames
+  (was static 12 frames → GAP produced identical embeddings → 0.9983 similarity; now transitions)
+- `skeleton_renderer.py:337-351` — `_is_reasonable_length()` indentation bug fixed
+  (was nested inside `_distance()` body — wrong scope, unreachable via `self`)
+- All 8 probe JSONs regenerated: `python3 generate_motion_probes.py`
+
+**Architecture Q&A:**
+- Body system before webcam/avatar? YES — Phase 3 completes the reference body. It IS the output layer until Phase 6.
+- Debugger/probe share same reference body? YES — already correct. `generate_motion_probes.py` imports constants from `skeleton_renderer.py`.
+- Deleted signatures need regeneration? Only triple-smoothed were deleted (originals intact). Future triggers below.
+
+**⚠️ TODO: Embedding regeneration triggers — do NOT forget:**
+1. **After Phase 3 Step 3e (facial landmark integration):** Re-extract all 4 concept signatures → regenerate ALL embeddings with new facial points included
+2. **After Phase 5 (temporal attention upgrade):** Regenerate ALL embeddings using new pooling method
+3. **If `FINGER_LENGTHS`, `PALM_LENGTH`, or shoulder normalization change:** Regenerate probe files AND embeddings
+
+---
+
+### Feb 10, 2026 - Phase 3: Reference Body Hardening + Probe Generator
 
 **Completed:**
 
@@ -253,21 +333,38 @@ Researched open-source anatomy resources for potential body model reference. All
 
 ---
 
-## Next Phase (Week 2-3)
+## Roadmap
 
-### Phase 4: Multi-Language Expansion
+See `docs/PRD.md` for the full phase table. Summary:
 
-- [ ] Expand to other words and phrases in ASL and BSL and make it bidirectional
-- [ ] Add JSL (Japanese Sign Language)
-- [ ] Add CSL (Chinese Sign Language)
-- [ ] Add LSF (French Sign Language)
-- [ ] Performance optimization (<50ms/frame)
+### Phase 4: Live Foundation (Next)
 
-### Phase 5: Scaling & API
+- [ ] Wire 4-stream combined embeddings into recognition engine (update registry JSON + `_compute_live_embedding()`)
+- [ ] Run recognition engine on live webcam input (first real-world test)
+- [ ] Procrustes pilot: validate cross-lingual alignment on held-out 5th concept
+- [ ] Performance target: <50ms/frame confirmed on live feed
 
-- [ ] Scale testing (100+ concepts)
-- [ ] REST API development
-- [ ] Production deployment
+### Phase 5: Temporal Foundation (Planned)
+
+- [ ] Replace Global Average Pooling with lightweight temporal attention in `generate_embeddings.py`
+- [ ] Frame-level embeddings with positional encoding → attention pooling (~50-100 lines)
+- [ ] Validate: open/close probe similarity drops below 0.50
+- [ ] Validate: 0.7339 recognition score maintained or improved
+- [ ] This phase gates vocabulary scaling — must complete before Phase 7
+
+### Phase 6: Avatar MVP (Planned)
+
+- [ ] React + Three.js + VRM character in web browser
+- [ ] Socket.io: Python backend → frontend bridge
+- [ ] Drive avatar bones from BSL JSON signatures
+- [ ] **Milestone: live demo — sign ASL HELLO → avatar plays BSL HELLO**
+
+### Phase 7: Language & Scale (Future)
+
+- [ ] Expand to 20+ concepts (ASL/BSL), then 100+
+- [ ] Add JSL (Japanese), CSL (Chinese), LSF (French)
+- [ ] Full Procrustes deployment (10-15 anchor pairs, validated on held-out concepts)
+- [ ] REST API + production deployment
 
 ---
 

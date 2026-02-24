@@ -18,22 +18,23 @@
 - **Avatar:** VRoid Studio (.vrm models).
 - **Communication:** Socket.io (Python Backend to React Frontend).
 
-## 4. Key Features (MVP Scope)
+## 4. Roadmap (Unified Phases)
 
-### Phase 1: Mocap & Embedding
+One phase structure, used across all docs.
 
-- Capture (x, y, z) landmarks from webcam.
-- Save "Golden Signatures" of 4 ASL and 4 ISL sentences as JSON files.
+| Phase | Name | Status | Delivers |
+|-------|------|--------|----------|
+| 1 | Foundation | ✅ Complete | WLASL pipeline, 3-tier quality system, 4 concepts × 2 languages |
+| 2 | Recognition Engine | ✅ Complete | Embeddings, cosine matching, 4-tier validation, temporal smoothing |
+| 3 | Rendering & Cleanup | 🔄 In Progress | Reference body, probe fixes, facial landmarks, codebase cleanup |
+| 4 | Live Foundation | 📋 Next | Wire combined embeddings + live webcam test + Procrustes pilot validation |
+| 5 | Temporal Foundation | 📋 Planned | Lightweight temporal encoding (positional + attention) — required before vocab scale |
+| 6 | Avatar MVP | 📋 Planned | React + Three.js + VRM avatar, Socket.io — **first live demo** |
+| 7 | Language & Scale | 📋 Future | 20+ concepts, JSL/CSL/LSF, Procrustes deployment, REST API |
 
-### Phase 2: Real-time Recognition
+**MVP success gate:** Phase 6 complete — a person signs ASL HELLO on webcam → avatar plays BSL HELLO.
 
-- Compare live webcam landmarks against JSON library.
-- Use Cosine Similarity threshold (e.g., > 0.90) to trigger a match.
-
-### Phase 3: Avatar Rendering
-
-- Load a VRM character in a web browser.
-- "Drive" the character's bones using coordinates from the JSON files.
+**Why Phase 5 before Avatar:** Without temporal ordering, adding >20 signs creates ambiguity — the demo would fail as vocabulary grows. Temporal Foundation (lightweight attention over frames, ~50-100 lines) ensures the Phase 6 avatar is built on a foundation that scales.
 
 ## 5. Success Metrics
 
@@ -44,5 +45,4 @@
 
 Acceptance criteria (PRD-level):
 
-Details, per-feature specifications and operational contracts are maintained in `docs/FEATURES.md` (functional features only).
 Note: full technical change logs and engineering stack updates are kept in `docs/STACK_UPDATES.md`. The PRD contains a high-level summary only, not an exhaustive changelog.

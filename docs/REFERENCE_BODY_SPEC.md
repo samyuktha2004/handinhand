@@ -388,3 +388,42 @@ BOUNDS_MARGIN = 10            # pixels from edge
 - [ ] Out-of-bounds points are clamped and flagged
 - [ ] No "4 hands" bug (only signature hands, no default hands)
 - [ ] Frame-to-frame transitions are smooth
+
+---
+
+## Appendix A: Color Accessibility Specification
+
+**Standard:** WCAG 2.1 + colorblind-safe (Deuteranopia, Protanopia, Tritanopia, Achromatopsia)
+**Palette:** Wong 2011 (Nature Methods) — validated for all colorblindness types. No per-user toggle required for v1.
+
+### Finger Colors (BGR)
+
+| Finger | Color Name      | BGR            | Notes                      |
+|--------|-----------------|----------------|----------------------------|
+| Thumb  | Wong Orange     | (0, 159, 230)  | Warm, prominent            |
+| Index  | Wong Sky Blue   | (233, 180, 86) | Cool, distinct from orange |
+| Middle | Wong Blue-Green | (115, 158, 0)  | Distinct, nature-like      |
+| Ring   | Wong Vermillion | (0, 94, 213)   | Distinct from orange       |
+| Pinky  | Wong Blue       | (178, 114, 0)  | Dark, clear endpoint       |
+
+### Body Colors (BGR)
+
+| Part         | Color                  | Rationale                               |
+|--------------|------------------------|-----------------------------------------|
+| Body/pose    | Gray-blue (138, 107, 74) | Low saturation, recedes behind hands  |
+| Neck         | Same as body           | Visual continuity                       |
+| Joint dots   | White (255, 255, 255)  | Maximum visibility                      |
+| Joint border | Dark gray (50, 50, 50) | Separation from background              |
+
+### Design Decisions
+
+1. **Wong palette is universal** — no colorblind toggle needed for v1.
+2. **Left vs right hand**: Same finger colors, different line thickness (Left=2px, Right=3px).
+3. **Body muted, hands prominent** — reduces visual clutter, draws attention to NMS-critical regions.
+4. **Anti-aliased lines** — use `cv2.LINE_AA` to reduce eye strain in long debug sessions.
+5. **Avoid Yellow (#F0E442) on light backgrounds** — use Vermillion for ring finger if background is uncertain.
+
+### Future
+
+- Colorblind toggle presets ("Standard", "High Contrast", "Grayscale") — Phase 5+
+- Shape-based finger identification (redundant encoding, not just color) — Phase 5+

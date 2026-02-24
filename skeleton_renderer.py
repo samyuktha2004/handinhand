@@ -334,21 +334,21 @@ class SkeletonRenderer:
         """Euclidean distance between two points."""
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
 
-        def _is_reasonable_length(
-            self,
-            length: float,
-            expected: float,
-            min_ratio: float = 0.5,
-            max_ratio: float = 1.5,
-        ) -> bool:
-            """Check if length is within biologically reasonable bounds.
+    def _is_reasonable_length(
+        self,
+        length: float,
+        expected: float,
+        min_ratio: float = 0.5,
+        max_ratio: float = 1.5,
+    ) -> bool:
+        """Check if length is within biologically reasonable bounds.
 
-            Defaults are conservative (0.5x - 1.5x). Callers that require
-            looser bounds (long limbs in low-res) should pass explicit ratios.
-            """
-            if expected <= 0.0:
-                return False
-            return (expected * min_ratio) <= length <= (expected * max_ratio)
+        Defaults are conservative (0.5x - 1.5x). Callers that require
+        looser bounds (long limbs in low-res) should pass explicit ratios.
+        """
+        if expected <= 0.0:
+            return False
+        return (expected * min_ratio) <= length <= (expected * max_ratio)
     
     def _angle_to(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         """Angle from p1 to p2 in radians."""
@@ -666,8 +666,9 @@ class SkeletonRenderer:
                 if not prev_valid:  # Skip if previous segment went out of bounds
                     break
                     
-                # Slight angle variation per segment (natural curl)
-                seg_angle = angle + 0.05 * i
+                # Biological cascade curl: relaxed hand has ~7° per segment flexion
+                # (MCP~8°, PIP~14°, DIP~21° cumulative — natural relaxed posture)
+                seg_angle = angle + 0.12 * i
                 
                 next_pt = self._point_at_angle(current, seg_angle, seg_length)
                 
