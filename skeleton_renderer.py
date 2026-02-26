@@ -24,6 +24,11 @@ import numpy as np
 from typing import Dict, Tuple, Optional, List
 import math
 
+from utils.landmarks import (
+    NUM_POSE, NUM_HAND, NUM_FACE, LEGACY_FACE_COUNT,
+    LEFT_HAND_START, RIGHT_HAND_START, FACE_START,
+)
+
 
 # =============================================================================
 # REFERENCE BODY CONSTANTS (FIXED - NEVER SCALED)
@@ -55,10 +60,10 @@ PALM_WIDTH = 24            # Width across knuckles (MCP line)
 # converting to relative fractions of `PALM_LENGTH` for portability later.
 FINGER_LENGTHS = {
     'thumb':  [8, 6, 5, 4],       # CMC→MCP→IP→TIP
-    'index':  [0, 12, 8, 6],      # MCP→PIP→DIP→TIP (0 = palm connection)
-    'middle': [0, 14, 9, 7],
-    'ring':   [0, 12, 8, 6],
-    'pinky':  [0, 10, 6, 5],
+    'index':  [0, 13, 8, 6],      # MCP→PIP→DIP→TIP — total 27 (90% of middle, biologically ~95%)
+    'middle': [0, 14, 9, 7],      # longest finger, baseline (total 30)
+    'ring':   [0, 13, 8, 6],      # same as index; ring ≈ index length anatomically
+    'pinky':  [0, 10, 6, 5],      # total 21 (70% of middle, biologically ~73%)
 }
 
 # Finger base positions (horizontal offset from palm center at MCP line)
@@ -484,6 +489,18 @@ class SkeletonRenderer:
         offset_x = wrist_pos[0] - data_wrist[0]
         offset_y = wrist_pos[1] - data_wrist[1]
         
+        # Inner helpers — defined before first use to avoid UnboundLocalError
+        def hand_point(idx: int) -> Tuple[int, int]:
+            return (
+                int(hand_data[idx][0] + offset_x),
+                int(hand_data[idx][1] + offset_y),
+            )
+
+        def expected_lengths(name: str) -> List[float]:
+            if name == 'thumb':
+                return FINGER_LENGTHS[name]
+            return [PALM_LENGTH] + FINGER_LENGTHS[name][1:]
+
         # Maximum reasonable hand span (wrist to fingertip)
         # Compute from palm + max finger lengths to be robust and portable
         max_finger_reach = 0
@@ -491,7 +508,7 @@ class SkeletonRenderer:
             lens = expected_lengths(name)
             max_finger_reach = max(max_finger_reach, sum(lens))
         max_hand_span = int((PALM_LENGTH + max_finger_reach) * 1.5 * self.current_scale)
-        
+
         # Finger landmark indices (MediaPipe hand model)
         finger_indices = {
             'thumb':  [0, 1, 2, 3, 4],
@@ -500,17 +517,6 @@ class SkeletonRenderer:
             'ring':   [0, 13, 14, 15, 16],
             'pinky':  [0, 17, 18, 19, 20],
         }
-        
-        def hand_point(idx: int) -> Tuple[int, int]:
-            return (
-                int(hand_data[idx][0] + offset_x),
-                int(hand_data[idx][1] + offset_y),
-            )
-        
-        def expected_lengths(name: str) -> List[float]:
-            if name == 'thumb':
-                return FINGER_LENGTHS[name]
-            return [PALM_LENGTH] + FINGER_LENGTHS[name][1:]
         
         # Draw palm connectors (wrist -> MCPs, plus MCP chain)
         mcp_indices = [5, 9, 13, 17]
@@ -658,17 +664,27 @@ class SkeletonRenderer:
             # Draw finger segments with validation
             current = start
             prev_valid = True
-            
+
+            # Anatomically grounded neutral-hand cascade (signing posture, mid-air):
+            # Joint flexion from clinical literature (Tandonline 2014, PMC 2024):
+            #   MCP: 15° (0.26 rad), PIP adds 20° (35° total), DIP adds 8° (43° total)
+            # Format: cumulative radians from palm direction, indexed by segment position i
+            _NEUTRAL_CASCADE = [0.0, 0.26, 0.61, 0.75]
+            # Ulnar cascade: ring/pinky flex more than index in resting posture
+            _ULNAR_MUL = {
+                'thumb': 0.85, 'index': 0.80, 'middle': 1.0, 'ring': 1.15, 'pinky': 1.35
+            }
+
             for i, seg_length in enumerate(lengths):
                 if seg_length == 0:
                     continue
-                
+
                 if not prev_valid:  # Skip if previous segment went out of bounds
                     break
-                    
-                # Biological cascade curl: relaxed hand has ~7° per segment flexion
-                # (MCP~8°, PIP~14°, DIP~21° cumulative — natural relaxed posture)
-                seg_angle = angle + 0.12 * i
+
+                # Biologically accurate cascade: PIP flexes more than MCP, DIP less than PIP
+                cascade = _NEUTRAL_CASCADE[min(i, len(_NEUTRAL_CASCADE) - 1)]
+                seg_angle = angle + cascade * _ULNAR_MUL[finger_name]
                 
                 next_pt = self._point_at_angle(current, seg_angle, seg_length)
                 
@@ -762,8 +778,8 @@ class SkeletonDrawerCompat:
         if landmarks is None or len(landmarks) == 0:
             return landmarks
         
-        # landmarks: [pose(6), left_hand(21), right_hand(21), face(4)] = 52 points
-        # pose: left_shoulder(0), right_shoulder(1), ...
+        # landmarks: [pose(NUM_POSE), left_hand(NUM_HAND), right_hand(NUM_HAND), face(n)] = FACE_START+ points
+        # pose: left_shoulder(LEFT_SHOULDER_IDX=0), right_shoulder(RIGHT_SHOULDER_IDX=1), ...
         
         if len(landmarks) < 6:
             return landmarks
@@ -828,20 +844,21 @@ class SkeletonDrawerCompat:
         renderer = SkeletonRenderer(w, h)
         
         # Convert flat landmarks array to dict format
-        # Expected: pose(6) + left_hand(21) + right_hand(21) + face(4) = 52
+        # Layout: pose(NUM_POSE) + left_hand(NUM_HAND) + right_hand(NUM_HAND) + face(n)
+        # FACE_START = NUM_POSE + 2*NUM_HAND = 48; face slice extends to end of array.
         landmarks_dict = {}
-        
-        if len(landmarks) >= 6:
-            landmarks_dict['pose'] = landmarks[:6]
-        
-        if len(landmarks) >= 27:  # 6 + 21
-            landmarks_dict['left_hand'] = landmarks[6:27]
-        
-        if len(landmarks) >= 48:  # 6 + 21 + 21
-            landmarks_dict['right_hand'] = landmarks[27:48]
 
-        if len(landmarks) >= 52:  # 6 + 21 + 21 + 4
-            landmarks_dict['face'] = landmarks[48:52]
+        if len(landmarks) >= NUM_POSE:
+            landmarks_dict['pose'] = landmarks[:NUM_POSE]
+
+        if len(landmarks) >= RIGHT_HAND_START:          # >= 27
+            landmarks_dict['left_hand'] = landmarks[LEFT_HAND_START:RIGHT_HAND_START]
+
+        if len(landmarks) >= FACE_START:                # >= 48
+            landmarks_dict['right_hand'] = landmarks[RIGHT_HAND_START:FACE_START]
+
+        if len(landmarks) > FACE_START:                 # at least one face point present
+            landmarks_dict['face'] = landmarks[FACE_START:]
         
         # Use renderer but draw on existing frame (not blank)
         positions = renderer._extract_positions(landmarks_dict)
@@ -892,56 +909,76 @@ def extract_landmarks_from_signature(signature: dict,
         
     Returns:
         List of landmark arrays, one per frame
-        Each array: [pose(6), left_hand(21), right_hand(21), face(4)] = 52 points
+        Each array: [pose(6), left_hand(21), right_hand(21), face(n)] = 52+ points
+        n is read from signature metadata so this function handles any future FACE_INDICES size.
     """
     # Handle alternate argument style
     if frame_width is not None and frame_height is not None:
         frame_size = (frame_width, frame_height)
-    
+
     frames = signature.get('pose_data', signature.get('frames', []))
     width, height = frame_size
-    
+
+    # n_face: read from signature metadata so this handles any future FACE_INDICES size.
+    # Falls back to LEGACY_FACE_COUNT (4) for old signatures without metadata.
+    n_face = signature.get('metadata', {}).get('landmarks_per_frame', {}).get('face', LEGACY_FACE_COUNT)
+
     result = []
     for frame in frames:
         landmarks = []
-        
-        # Pose (6 points): shoulders, elbows, wrists
+
+        # Pose (NUM_POSE points): shoulders, elbows, wrists
         pose = frame.get('pose', [])
-        if pose and len(pose) >= 6:
-            for pt in pose[:6]:
+        if pose and len(pose) >= NUM_POSE:
+            for pt in pose[:NUM_POSE]:
                 landmarks.append([pt[0] * width, pt[1] * height, pt[2] if len(pt) > 2 else 0])
         else:
-            # Fallback: use zeros
-            for _ in range(6):
+            for _ in range(NUM_POSE):
                 landmarks.append([0, 0, 0])
-        
-        # Left hand (21 points)
+
+        # Left hand (NUM_HAND points)
         left_hand = frame.get('left_hand', [])
-        if left_hand and len(left_hand) == 21:
+        if left_hand and len(left_hand) == NUM_HAND:
             for pt in left_hand:
                 landmarks.append([pt[0] * width, pt[1] * height, pt[2] if len(pt) > 2 else 0])
         else:
-            for _ in range(21):
+            for _ in range(NUM_HAND):
                 landmarks.append([0, 0, 0])
-        
-        # Right hand (21 points)
+
+        # Right hand (NUM_HAND points)
         right_hand = frame.get('right_hand', [])
-        if right_hand and len(right_hand) == 21:
+        if right_hand and len(right_hand) == NUM_HAND:
             for pt in right_hand:
                 landmarks.append([pt[0] * width, pt[1] * height, pt[2] if len(pt) > 2 else 0])
         else:
-            for _ in range(21):
+            for _ in range(NUM_HAND):
                 landmarks.append([0, 0, 0])
-        
-        # Face (4 points)
+
+        # Face landmarks (n_face points — from metadata; partial detection is zero-padded)
         face = frame.get('face', [])
-        if face and len(face) >= 4:
-            for pt in face[:4]:
+        for i in range(n_face):
+            if i < len(face):
+                pt = face[i]
                 landmarks.append([pt[0] * width, pt[1] * height, pt[2] if len(pt) > 2 else 0])
-        else:
-            for _ in range(4):
+            else:
                 landmarks.append([0, 0, 0])
-        
+
+        # Layer B: Format validation — warn and pad/truncate if count mismatches metadata
+        expected_count = NUM_POSE + 2 * NUM_HAND + n_face
+        actual_count = len(landmarks)
+        if actual_count != expected_count:
+            import warnings
+            warnings.warn(
+                f"extract_landmarks_from_signature: landmark count mismatch "
+                f"(got {actual_count}, expected {expected_count}). "
+                f"Signature may be from an incompatible version. Padding/truncating.",
+                RuntimeWarning
+            )
+            if actual_count < expected_count:
+                landmarks.extend([[0, 0, 0]] * (expected_count - actual_count))
+            else:
+                landmarks = landmarks[:expected_count]
+
         result.append(np.array(landmarks))
     
     return result

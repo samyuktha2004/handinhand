@@ -3,7 +3,7 @@
 
 Outputs JSON signatures in the same format as extracted signatures:
   - pose_data: list of frames
-  - each frame has pose (6), left_hand (21), right_hand (21), face (4)
+  - each frame has pose (NUM_POSE), left_hand (NUM_HAND), right_hand (NUM_HAND), face (NUM_FACE)
 
 These are control motions (not signs) for embedding sanity checks.
 """
@@ -21,6 +21,7 @@ from skeleton_renderer import (
     FINGER_LENGTHS,
     FINGER_BASE_OFFSETS,
 )
+from utils.landmarks import NUM_POSE, NUM_HAND, NUM_FACE
 
 
 WIDTH = FRAME_WIDTH
@@ -60,47 +61,187 @@ def _build_pose(shoulder_center: Tuple[float, float], left_angle: float, right_a
 def _build_hand(wrist: Tuple[float, float], mode: str, mirror: int) -> List[List[float]]:
     """Build a 21-point hand in local coordinates.
 
-    mode: neutral | open | close | spread | pinch
-    mirror: 1 (right hand) or -1 (left hand)
+    Handshape coverage (ASL/BSL phonemic space — combinations cover all signs):
+
+      Closed fist group:
+        close_a   — ASL "A": fist, thumb ALONGSIDE fingers (A, N, T signs)
+        close_s   — ASL "S": fist, thumb OVER index/middle fingers (S, E, M signs)
+
+      Extended finger group:
+        open      — ASL "B" spread: fingers extended, moderate spread
+        flat_b    — ASL "B" flat: fingers extended, TOGETHER, thumb tucked
+        spread    — ASL "5": fingers extended and maximally spread
+
+      Curved group:
+        curved_c  — ASL "C": curved as if holding a ball (C, G entry position)
+        o_shape   — ASL "O": all fingertips touch thumb, circular aperture
+
+      Selective extension group (per-finger control):
+        point     — ASL "1"/"G"/"D": index extended, others closed
+        v_shape   — ASL "V"/"2"/"U": index+middle extended, others closed
+        l_shape   — ASL "L": index pointing up, thumb extended out 90°
+        y_shape   — ASL "Y": thumb+pinky extended, middle fingers closed
+
+      Contact group:
+        pinch     — ASL "F"/"8": thumb tip meets index tip
+        neutral   — resting hand (used as inter-probe baseline)
+
+    mirror: 1 = right hand, -1 = left hand
     """
     wx, wy = wrist
     points: List[Tuple[float, float]] = []
+    points.append((wx, wy))  # Wrist (landmark 0)
 
-    # Wrist point
-    points.append((wx, wy))
+    finger_order = ["thumb", "index", "middle", "ring", "pinky"]
 
-    # Hand shaping parameters
+    # Canonical finger base angles (radians from straight-down = π/2).
+    # Aligned with skeleton_renderer.py FINGER_ANGLES constant.
+    # Thumb: -0.70 rad = 40° natural abduction (PMC 2013 clinical ref).
+    _BASE_ANGLES = {
+        "thumb": -0.70, "index": -0.12, "middle": 0.0, "ring": 0.12, "pinky": 0.28,
+    }
+
+    # Per-finger curl (radians added per joint position, uniform within a finger).
+    # Closed = 0.52 (tip at ~89° from base, correct front-view fist).
+    # Extended = 0.0.
+    FIST_CURL = 0.52
+
+    # Default: all fingers extended, natural spread, thumb natural
+    finger_curls = {f: 0.0 for f in finger_order}
+    finger_length_scales = {f: 1.0 for f in finger_order}
     spread = 1.0
-    curl = 0.0
-    length_scale = 1.0
+    thumb_abduction = _BASE_ANGLES["thumb"]  # default
 
-    if mode == "open":
+    # ----------------------------------------------------------------
+    # Closed fist group
+    # ----------------------------------------------------------------
+    if mode in ("close_a", "close_s"):
+        spread = 0.6
+        finger_curls = {f: FIST_CURL for f in finger_order}
+        finger_length_scales = {f: 0.7 for f in finger_order}
+        # Thumb: adducted alongside fist for both A and S (thumb angle toward fingers)
+        thumb_abduction = -0.30  # ~17° — thumb pressed alongside, less abducted in fist
+
+    # ----------------------------------------------------------------
+    # Extended finger group
+    # ----------------------------------------------------------------
+    elif mode == "open":
         spread = 1.2
-        curl = 0.0
-        length_scale = 1.0
-    elif mode == "close":
-        spread = 0.6   # Tighter finger grouping (real fist)
-        curl = 0.52    # PIP~90°, tips fold back toward palm (curl*3 ≈ π/2)
-        length_scale = 0.7
+        finger_curls = {f: 0.0 for f in finger_order}
+
+    elif mode == "flat_b":
+        spread = 0.55  # fingers tight together
+        finger_curls = {f: 0.0 for f in finger_order}
+        thumb_abduction = -0.15  # tucked, barely abducted
+
     elif mode == "spread":
         spread = 1.6
-        curl = 0.0
-        length_scale = 1.0
+        finger_curls = {f: 0.0 for f in finger_order}
+
+    # ----------------------------------------------------------------
+    # Curved group
+    # ----------------------------------------------------------------
+    elif mode == "curved_c":
+        spread = 1.1
+        # C-shape: moderate curl, MCP≈30°, PIP≈45°, DIP≈10°
+        # Represented as uniform curl ≈ 0.22 (13°/joint, cumulative 39° at DIP)
+        finger_curls = {f: 0.22 for f in finger_order}
+        thumb_abduction = -0.55  # partially abducted to complete the C
+
+    elif mode == "o_shape":
+        spread = 0.7
+        # O-shape: fingertips curl significantly toward thumb tip
+        # High curl brings all tips toward center; post-processing meets them
+        finger_curls = {f: 0.42 for f in finger_order}
+        finger_length_scales = {f: 0.85 for f in finger_order}
+        thumb_abduction = -0.40  # thumb bends into the circle
+
+    # ----------------------------------------------------------------
+    # Selective extension group (per-finger)
+    # ----------------------------------------------------------------
+    elif mode == "point":
+        spread = 0.8
+        finger_curls = {
+            "thumb": 0.25,   # alongside fist
+            "index": 0.0,    # EXTENDED — pointing
+            "middle": FIST_CURL,
+            "ring": FIST_CURL,
+            "pinky": FIST_CURL,
+        }
+        finger_length_scales = {
+            "thumb": 0.85, "index": 1.0, "middle": 0.7, "ring": 0.7, "pinky": 0.7,
+        }
+        thumb_abduction = -0.30  # tucked alongside
+
+    elif mode == "v_shape":
+        spread = 1.0
+        finger_curls = {
+            "thumb": 0.25,
+            "index": 0.0,    # EXTENDED
+            "middle": 0.0,   # EXTENDED
+            "ring": FIST_CURL,
+            "pinky": FIST_CURL,
+        }
+        finger_length_scales = {
+            "thumb": 0.85, "index": 1.0, "middle": 1.0, "ring": 0.7, "pinky": 0.7,
+        }
+        thumb_abduction = -0.30
+
+    elif mode == "l_shape":
+        spread = 0.9
+        finger_curls = {
+            "thumb": 0.0,    # EXTENDED outward — but we rotate thumb angle separately
+            "index": 0.0,    # EXTENDED pointing up
+            "middle": FIST_CURL,
+            "ring": FIST_CURL,
+            "pinky": FIST_CURL,
+        }
+        finger_length_scales = {
+            "thumb": 1.0, "index": 1.0, "middle": 0.7, "ring": 0.7, "pinky": 0.7,
+        }
+        # Thumb perpendicular to index: -1.40 rad ≈ -80° (nearly 90° from middle finger)
+        thumb_abduction = -1.40
+
+    elif mode == "y_shape":
+        spread = 1.0
+        finger_curls = {
+            "thumb": 0.0,    # EXTENDED
+            "index": FIST_CURL,
+            "middle": FIST_CURL,
+            "ring": FIST_CURL,
+            "pinky": 0.0,    # EXTENDED
+        }
+        finger_length_scales = {
+            "thumb": 1.0, "index": 0.7, "middle": 0.7, "ring": 0.7, "pinky": 1.0,
+        }
+        thumb_abduction = -0.85  # more abducted for Y shape
+
+    # ----------------------------------------------------------------
+    # Contact group
+    # ----------------------------------------------------------------
     elif mode == "pinch":
         spread = 1.0
-        curl = 0.15
-        length_scale = 0.9
+        finger_curls = {
+            "thumb": 0.20,
+            "index": 0.20,   # slight curl to bring tip toward thumb
+            "middle": 0.18, "ring": 0.18, "pinky": 0.18,
+        }
+        finger_length_scales = {f: 0.9 for f in finger_order}
 
-    # Build each finger from base offsets
-    finger_order = ["thumb", "index", "middle", "ring", "pinky"]
-    base_angle = math.pi / 2  # down
-    base_angle_variants = {
-        "thumb": -0.55,
-        "index": -0.12,
-        "middle": 0.0,
-        "ring": 0.12,
-        "pinky": 0.28,
-    }
+    # ----------------------------------------------------------------
+    # Neutral (default): natural relaxed signing hand
+    # No override needed — zero curl with natural spread represents
+    # the probes' "start" frame; full cascade handled in renderer.
+    # ----------------------------------------------------------------
+
+    # Build base angle map with resolved thumb abduction
+    base_angle_map = dict(_BASE_ANGLES)
+    base_angle_map["thumb"] = thumb_abduction
+
+    # ----------------------------------------------------------------
+    # Build finger geometry
+    # ----------------------------------------------------------------
+    base_angle_down = math.pi / 2  # pointing down in image space
 
     for finger_name in finger_order:
         dx = FINGER_BASE_OFFSETS[finger_name] * spread * mirror
@@ -110,34 +251,48 @@ def _build_hand(wrist: Tuple[float, float], mode: str, mirror: int) -> List[List
             dx = abs(dx) * mirror
 
         base = (wx + dx, wy + dy)
-        points.append(base)
+        points.append(base)  # MCP (or CMC for thumb)
 
         lengths = FINGER_LENGTHS[finger_name]
-        angle = base_angle + base_angle_variants[finger_name] * mirror
+        angle = base_angle_down + base_angle_map[finger_name] * mirror
+        curl = finger_curls[finger_name]
+        lscale = finger_length_scales[finger_name]
 
         current = base
         for i, seg in enumerate(lengths[1:], start=1):
-            seg_len = seg * length_scale
+            seg_len = seg * lscale
             seg_angle = angle + curl * i
             current = _point_at(current, seg_angle, seg_len)
             points.append(current)
 
-    # Ensure 21 points
+    # Ensure exactly 21 points
     if len(points) < 21:
         points.extend([points[-1]] * (21 - len(points)))
     points = points[:21]
 
-    # Close/fist: thumb wraps over index/middle fingers (biological fist anatomy)
-    if mode == "close":
-        index_mcp = points[5]   # Index MCP is landmark index 5
+    # ----------------------------------------------------------------
+    # Post-processing for specific shapes
+    # ----------------------------------------------------------------
+
+    # close_s: thumb tip wraps OVER index/middle fingers (ASL "S" dorsal wrap)
+    if mode == "close_s":
+        index_mcp = points[5]
         thumb_tip_idx = 4
-        # Pull thumb tip 60% of the way toward index MCP (thumb over fingers)
         tx = points[thumb_tip_idx][0] * 0.4 + index_mcp[0] * 0.6
         ty = points[thumb_tip_idx][1] * 0.4 + index_mcp[1] * 0.6
         points[thumb_tip_idx] = (tx, ty)
 
-    # Pinch: bring thumb + index tips together
-    if mode == "pinch":
+    # o_shape: pull all fingertips toward thumb tip to close the circle
+    elif mode == "o_shape":
+        thumb_tip = points[4]
+        # index, middle, ring, pinky tips are at indices 8, 12, 16, 20
+        for tip_idx in [8, 12, 16, 20]:
+            tx = points[tip_idx][0] * 0.5 + thumb_tip[0] * 0.5
+            ty = points[tip_idx][1] * 0.5 + thumb_tip[1] * 0.5
+            points[tip_idx] = (tx, ty)
+
+    # pinch: bring thumb + index tips together
+    elif mode == "pinch":
         thumb_tip = 4
         index_tip = 8
         mid_x = (points[thumb_tip][0] + points[index_tip][0]) / 2
@@ -153,7 +308,7 @@ def _frame_dict(pose: List[List[float]], left_hand: List[List[float]], right_han
         "pose": pose,
         "left_hand": left_hand,
         "right_hand": right_hand,
-        "face": [[0.0, 0.0, 0.0] for _ in range(4)],
+        "face": [[0.0, 0.0, 0.0] for _ in range(NUM_FACE)],
     }
 
 
@@ -204,13 +359,21 @@ def build_probe_sequence(name: str, steps: int = 12) -> Dict:
             right_hand = _build_hand(right_wrist, "neutral", mirror=1)
             frames.append(_frame_dict(pose, left_hand, right_hand))
 
-    if name in {"open", "close", "spread", "pinch"}:
+    _HAND_SHAPE_PROBES = {
+        "open", "flat_b", "spread",          # extended group
+        "close_a", "close_s",                # fist group
+        "curved_c", "o_shape",               # curved group
+        "point", "v_shape", "l_shape", "y_shape",  # selective extension group
+        "pinch",                             # contact group
+    }
+
+    if name in _HAND_SHAPE_PROBES:
         pose = _build_pose(shoulder_center, neutral_left, neutral_right)
         left_wrist = (pose[4][0] * WIDTH, pose[4][1] * HEIGHT)
         right_wrist = (pose[5][0] * WIDTH, pose[5][1] * HEIGHT)
         # Animate: first half neutral, second half target shape.
         # GAP will average the transition → embedding is distinct from static poses.
-        # This also matches real signing: hand moves into shape, not teleports.
+        # This also matches real signing: hand transitions into shape, not teleports.
         half = steps // 2
         for i in range(steps):
             frame_mode = "neutral" if i < half else name
@@ -223,13 +386,39 @@ def build_probe_sequence(name: str, steps: int = 12) -> Dict:
             "frame_width": WIDTH,
             "frame_height": HEIGHT,
             "probe_name": name,
+            "landmarks_per_frame": {
+                "pose": NUM_POSE,
+                "left_hand": NUM_HAND,
+                "right_hand": NUM_HAND,
+                "face": NUM_FACE,
+            },
         },
         "pose_data": frames,
     }
 
 
 def main() -> None:
-    probe_names = ["up", "down", "left", "right", "open", "close", "spread", "pinch"]
+    probe_names = [
+        # Arm direction probes (body position)
+        "up", "down", "left", "right",
+        # Extended finger group
+        "open",       # ASL B-spread: fingers extended, moderate spread
+        "flat_b",     # ASL B-flat: fingers together, thumb tucked
+        "spread",     # ASL 5: fingers maximally spread
+        # Fist group
+        "close_a",    # ASL A: fist, thumb alongside
+        "close_s",    # ASL S: fist, thumb over fingers
+        # Curved group
+        "curved_c",   # ASL C: curved like holding a ball
+        "o_shape",    # ASL O: all tips touch thumb
+        # Selective extension (per-finger)
+        "point",      # ASL 1/G/D: index pointing
+        "v_shape",    # ASL V/2: index+middle extended
+        "l_shape",    # ASL L: index up, thumb out
+        "y_shape",    # ASL Y: thumb+pinky extended
+        # Contact
+        "pinch",      # ASL F/8: thumb-index contact
+    ]
     for name in probe_names:
         signature = build_probe_sequence(name)
         out_path = f"assets/probes/probe_{name}.json"

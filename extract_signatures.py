@@ -18,15 +18,17 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import numpy as np
 
+from utils.landmarks import POSE_INDICES, FACE_INDICES, HAND_INDICES
+
 
 class SignatureExtractor:
     """Extract pose/hand/face landmarks from sign language videos."""
 
-    # Landmark indices to extract
-    LEFT_HAND_INDICES = list(range(21))  # 0-20
-    RIGHT_HAND_INDICES = list(range(21))  # 0-20
-    POSE_INDICES = [11, 12, 13, 14, 15, 16]  # Shoulders and arms
-    FACE_INDICES = [70, 107, 300, 336]  # Eyebrows (left: 70,107; right: 300,336)
+    # Landmark indices — imported from utils.landmarks (single source of truth)
+    LEFT_HAND_INDICES  = HAND_INDICES
+    RIGHT_HAND_INDICES = HAND_INDICES
+    POSE_INDICES       = POSE_INDICES
+    FACE_INDICES       = FACE_INDICES
 
     def __init__(self, output_dir: str = "assets/signatures", delete_after: bool = False):
         """Initialize MediaPipe Holistic detector.
@@ -223,8 +225,8 @@ class SignatureExtractor:
                 "fps": fps,
                 "total_frames": frame_count,
                 "landmarks_per_frame": {
-                    "left_hand": 21,
-                    "right_hand": 21,
+                    "left_hand": len(self.LEFT_HAND_INDICES),
+                    "right_hand": len(self.RIGHT_HAND_INDICES),
                     "pose": len(self.POSE_INDICES),
                     "face": len(self.FACE_INDICES),
                 },
@@ -322,8 +324,8 @@ class SignatureExtractor:
                 "frame_start": frame_start,
                 "frame_end": frame_end,
                 "landmarks_per_frame": {
-                    "left_hand": 21,
-                    "right_hand": 21,
+                    "left_hand": len(self.LEFT_HAND_INDICES),
+                    "right_hand": len(self.RIGHT_HAND_INDICES),
                     "pose": len(self.POSE_INDICES),
                     "face": len(self.FACE_INDICES),
                 },

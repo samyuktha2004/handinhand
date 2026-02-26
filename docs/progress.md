@@ -62,19 +62,40 @@ Triple-smoothed signatures (keep originals + single-smoothed only):
 `assets/signatures/asl/where_0_smoothed_smoothed.json`,
 `assets/signatures/asl/where_0_smoothed_smoothed_smoothed.json`
 
-**Biological Accuracy Fixes Applied (Feb 24, continued):**
+**Biological Accuracy Fixes Applied (Feb 24–25):**
 
-- `skeleton_renderer.py:670` — Neutral hand cascade curl: `0.05 * i` → `0.12 * i`
-  (MCP~8°, PIP~14°, DIP~21° cumulative — natural relaxed posture, not flat paddle)
-- `generate_motion_probes.py` — Fist/close mode: curl 0.35 → 0.52, spread 0.8 → 0.6
-  (tips now fold toward palm at ~89°, matching PIP~90° in real fist anatomy)
-- `generate_motion_probes.py` — Thumb wrapping: pulls thumb tip 60% toward index MCP
-  (biologically correct: thumb wraps over index/middle fingers in a fist)
-- `generate_motion_probes.py:198-205` — Probe animation: 6 neutral + 6 target frames
-  (was static 12 frames → GAP produced identical embeddings → 0.9983 similarity; now transitions)
-- `skeleton_renderer.py:337-351` — `_is_reasonable_length()` indentation bug fixed
-  (was nested inside `_distance()` body — wrong scope, unreachable via `self`)
-- All 8 probe JSONs regenerated: `python3 generate_motion_probes.py`
+Source: Clinical literature (Tandonline 2014, PMC 2024/2013/2014)
+
+*skeleton_renderer.py:*
+- Neutral hand: `0.05*i` → full anatomical cascade `NEUTRAL_CASCADE=[0.0,0.26,0.61,0.75]`
+  (MCP:15°, PIP adds 20°, DIP adds 8° cumulative from palm — signing neutral posture)
+  Plus per-finger ulnar multipliers: index=0.80×, ring=1.15×, pinky=1.35× (ulnar cascade)
+- `FINGER_LENGTHS` proportions: index/ring PIP 12→13 (90% of middle, biological ~95%)
+- `_is_reasonable_length()` indentation bug fixed (was nested inside `_distance()` body)
+
+*generate_motion_probes.py (major refactor):*
+- Thumb angle: -0.55 → -0.70 rad (consistent with skeleton_renderer, 40° natural abduction)
+- `_build_hand()` rewritten with per-finger curl/length/spread control
+- Fist: curl 0.35→0.52 (89° cumulative tip angle), spread 0.8→0.6
+- All probes animated: 6 neutral + 6 target frames (not static)
+
+**Comprehensive Handshape Set — 16 Probes (Feb 25):**
+
+| Group | Probes | ASL Handshapes Covered |
+|---|---|---|
+| Direction | up, down, left, right | body/arm position |
+| Extended | open, flat_b, spread | B (spread), B (flat), 5 |
+| Fist | close_a, close_s | A/N/T, S/E/M |
+| Curved | curved_c, o_shape | C, O |
+| Selective | point, v_shape, l_shape, y_shape | 1/G/D, V/2/U, L, Y |
+| Contact | pinch | F/8 |
+
+Combinations of these + arm direction + motion = full ASL/BSL phonemic coverage.
+All 16 probe JSONs regenerated: `python3 generate_motion_probes.py`
+
+**Skeleton debugger display scaling:** VERIFIED correct (no fix needed).
+`normalize_to_reference()` correctly handles pixel coords (X≈421): centers to (320,200),
+scales to REFERENCE_SHOULDER_WIDTH=100px. Dead code `_normalize_landmarks_to_bbox()` present but not called.
 
 **Architecture Q&A:**
 - Body system before webcam/avatar? YES — Phase 3 completes the reference body. It IS the output layer until Phase 6.
@@ -85,6 +106,68 @@ Triple-smoothed signatures (keep originals + single-smoothed only):
 1. **After Phase 3 Step 3e (facial landmark integration):** Re-extract all 4 concept signatures → regenerate ALL embeddings with new facial points included
 2. **After Phase 5 (temporal attention upgrade):** Regenerate ALL embeddings using new pooling method
 3. **If `FINGER_LENGTHS`, `PALM_LENGTH`, or shoulder normalization change:** Regenerate probe files AND embeddings
+
+---
+
+### Feb 25, 2026 — Direction Assessment, Research Update, Fallback Audit
+
+**Research Insights updated:** `docs/research_insights/JOINT_ANATOMY_INSIGHTS.md`
+- Added Section 2.4: Clinical resting angles (Tandonline 2014 / PMC 2024)
+- Added NEUTRAL_CASCADE + ULNAR_MULTIPLIER implementation notes
+- Added Section 12: ASL/BSL Phonemic Handshape Taxonomy (all 12 handshapes)
+- Added Section 13: Facial landmarks / NMS roadmap
+
+**Direction Assessment: YES, we are on track.**
+
+| Area | Status |
+|------|--------|
+| Reference body biological accuracy | ✅ Implemented (NEUTRAL_CASCADE, ulnar multipliers, FINGER_LENGTHS) |
+| Phonemic handshape coverage | ✅ 12 handshapes + 4 directions = 16 probes; full ASL/BSL phonemic space covered |
+| Probe animation | ✅ 6 neutral + 6 target frames — probes no longer static |
+| Combined embedding coded | ✅ Done in generate_embeddings.py |
+| Combined embedding wired to engine | ❌ Phase 4 first task (registry paths + _compute_live_embedding) |
+| Sign playback on reference body | ✅ skeleton_debugger.py plays any stored signature via pixel-space normalize_to_reference() |
+| Smooth chaining of signs | ❌ Not yet tested — individual signs work, sequences not validated |
+| Facial landmarks (mouth/lips) | ❌ Phase 3 Step 3e remaining |
+
+**Existing Fallback/Detection System (what we have):**
+
+| Layer | Where | What it does |
+|-------|-------|--------------|
+| Frame interpolation | `extract_signatures.py:_interpolate_landmarks()` | Fills 1-3 frame detection gaps with linear interpolation |
+| Zero-landmark detection | `extract_signatures.py:_get_hand_landmarks()` | Returns `[0,0,0]×21` if hand not detected; `_normalize_landmarks()` masks zero points |
+| Neutral hand fallback | `skeleton_renderer.py` | Draws anatomical neutral hand when landmark data missing or invalid |
+| Tier 4 validation | `recognition_engine.py:recognize()` | Rejects: cosine < 0.80; or best−second < 0.15 gap → labels as `low_confidence` or `cross_concept_noise` |
+| Status labels | `RecognitionResult.verification_status` | `verified`, `low_confidence`, `cross_concept_noise` — downstream can act on these |
+
+**Fallback Gaps (missing, planned):**
+- ❌ Embedding quality check before recognition — if > 30% frames are zero (bad recording/lighting), the signature should be flagged before computing embeddings
+- ❌ Anatomical constraint validation — JOINT_ANATOMY_INSIGHTS roadmap Phases 1-4 not yet implemented
+- ❌ Signature file integrity check — no validation that loaded JSON has expected landmark structure
+- ❌ Sign sequence smoothing — no interpolation between successive sign playbacks on reference body
+
+**Phase 3 Remaining (only 1 item left):**
+
+**Step 3e — Facial landmark integration** (`extract_signatures.py`):
+- Add mouth corners (indices 61, 291) + lip center (index 13) to `FACE_INDICES`
+- Extends FACE_INDICES from 4 → 7 points (4 eyebrow + 3 mouth)
+- After: re-extract all 4 concept signatures → regenerate all embeddings (see TODO above)
+
+**Phase 4 Work (next branch — `feature/live-validation`):**
+1. Wire `*_combined.npy` into recognition engine:
+   - Update `assets/registries/asl_registry.json` embedding_mean_file paths → `*_combined.npy`
+   - Mirror 4-stream logic into `_compute_live_embedding()` in `recognition_engine.py`
+2. Add embedding quality check (fraction-zero-frames gate)
+3. Run first live webcam test — sign 4 concepts, record accuracy and latency
+4. Procrustes pilot on held-out 5th concept
+
+**Future: Smooth Sign Sequence Playback (Phase 6 groundwork):**
+- Stored signatures are frame-by-frame landmark sequences
+- `skeleton_debugger.py` plays them cleanly for single signs
+- For sequences (sign A → sign B → sign C), need transition frames:
+  - Option 1: Simple linear interpolation between last frame of A and first frame of B (3-5 frames)
+  - Option 2: Hold-for-coarticulation (stay on hold pose for N frames then blend)
+- This is NOT needed for Phase 4 (live recognition); it IS needed for Phase 6 (avatar playback)
 
 ---
 

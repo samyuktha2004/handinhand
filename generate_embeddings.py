@@ -26,6 +26,11 @@ import os
 
 # Import registry loader for new structure
 from utils.registry_loader import RegistryLoader
+from utils.landmarks import (
+    TOTAL_LANDMARKS, TOTAL_LANDMARKS_EMBED,
+    LEFT_SHOULDER_IDX, RIGHT_SHOULDER_IDX,
+    FACE_START, FACE_EMBED_OFFSETS,
+)
 
 # ============================================================================
 # CONFIGURATION
@@ -34,9 +39,9 @@ REGISTRIES_DIR = "assets/registries"
 EMBEDDINGS_DIR = "assets/embeddings"
 SIGNATURES_DIR = "assets/signatures"
 
-# Landmark indices for pose normalization
-SHOULDER_CENTER_LEFT = 11   # Left shoulder
-SHOULDER_CENTER_RIGHT = 12  # Right shoulder
+# Landmark indices for pose normalization (within compact 6-point pose array)
+SHOULDER_CENTER_LEFT  = LEFT_SHOULDER_IDX   # 0 in compact pose, MediaPipe index 11
+SHOULDER_CENTER_RIGHT = RIGHT_SHOULDER_IDX  # 1 in compact pose, MediaPipe index 12
 
 # Embedding dimension (Global Average Pooling output)
 EMBEDDING_DIM = 512
@@ -172,9 +177,20 @@ class EmbeddingGenerator:
                         landmarks.append(pt[:3])
 
         if len(landmarks) == 0:
-            return np.zeros(52 * 3, dtype=np.float32)
+            return np.zeros(TOTAL_LANDMARKS_EMBED * 3, dtype=np.float32)
 
         landmarks = np.array(landmarks, dtype=np.float32)
+
+        # Select embedding-relevant face points (FACE_INDICES_EMBED subset of FACE_INDICES_EXTRACT).
+        # Keeps pose+hand (first FACE_START=48 pts) + 7 selected face pts = 55 pts total.
+        # Handles face:4, face:7, and face:20 formats — missing offsets are zero-padded.
+        if len(landmarks) > FACE_START:
+            face_sub = landmarks[FACE_START:]
+            embed_face = np.zeros((len(FACE_EMBED_OFFSETS), 3), dtype=np.float32)
+            for i, off in enumerate(FACE_EMBED_OFFSETS):
+                if off < len(face_sub):
+                    embed_face[i] = face_sub[off]
+            landmarks = np.vstack([landmarks[:FACE_START], embed_face])
 
         # Joint stream: body-centric normalized flattened joints
         joints_norm = self._normalize_landmarks(landmarks, shoulder_center=shoulder_center)
@@ -363,9 +379,8 @@ class EmbeddingGenerator:
                         os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                         joint_path = npy_path.replace('.npy', '_joint.npy')
                         combined_path = npy_path.replace('.npy', '_combined.npy')
-                        np.save(joint_path, bsl_embedding)  # single-file BSL target => joint only
-                        # For BSL target we reuse same for combined placeholder
-                        np.save(combined_path, bsl_embedding)
+                        np.save(joint_path, bsl_embedding['joint'])
+                        np.save(combined_path, bsl_embedding['combined'])
                         joint_map[concept_id] = joint_path
                         combined_map[concept_id] = combined_path
                         print(f"   ✅ BSL joint saved: {joint_path}")

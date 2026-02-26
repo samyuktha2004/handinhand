@@ -2,9 +2,9 @@
   "_metadata": {
     "language": "asl",
     "purpose": "ASL signatures and embeddings for recognition",
-    "version": "1.0",
-    "last_updated": "2026-01-23T21:59:14.255617",
-    "description": "American Sign Language reference dataset - extracted from translation_map.json"
+    "version": "1.1",
+    "last_updated": "2026-02-26",
+    "description": "American Sign Language reference dataset. Re-extracted 2026-02-26 with face:7 landmarks (Phase 3 update). Source: WLASL v0.3 dataset via yt-dlp."
   },
   "C_GREETING_001": {
     "concept_name": "GREETING",
@@ -14,26 +14,26 @@
         "gloss": "hello",
         "instance_id": 0,
         "signature_file": "assets/signatures/asl/hello_0.json",
-        "language": "ASL",
         "source_url": "https://www.youtube.com/watch?v=SiBub8VD5wo",
         "frame_range": {
-          "frame_start": 1293,
-          "frame_end": 1348
+          "frame_start": 1297,
+          "frame_end": 1343
         },
-        "frames": 46,
+        "landmark_format": "face:7",
+        "frames": 54,
         "verification_status": "auto_verified"
       },
       {
         "gloss": "hello",
         "instance_id": 1,
         "signature_file": "assets/signatures/asl/hello_1.json",
-        "language": "ASL",
         "source_url": "https://www.youtube.com/watch?v=25ymRY7hbjs",
         "frame_range": {
-          "frame_start": 4834,
-          "frame_end": 4931
+          "frame_start": 4842,
+          "frame_end": 4923
         },
-        "frames": 50,
+        "landmark_format": "face:7",
+        "frames": 97,
         "verification_status": "auto_verified"
       }
     ],
@@ -54,21 +54,13 @@
         "gloss": "you",
         "instance_id": 0,
         "signature_file": "assets/signatures/asl/you_0.json",
-        "language": "ASL",
-        "verification_status": "auto_verified"
-      },
-      {
-        "gloss": "you",
-        "instance_id": 1,
-        "signature_file": "assets/signatures/asl/you_1.json",
-        "language": "ASL",
-        "verification_status": "auto_verified"
-      },
-      {
-        "gloss": "you",
-        "instance_id": 2,
-        "signature_file": "assets/signatures/asl/you_2.json",
-        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=BRO-oYGV224",
+        "frame_range": {
+          "frame_start": 242,
+          "frame_end": 291
+        },
+        "landmark_format": "face:7",
+        "frames": 57,
         "verification_status": "auto_verified"
       }
     ],
@@ -90,21 +82,13 @@
         "gloss": "go",
         "instance_id": 0,
         "signature_file": "assets/signatures/asl/go_0.json",
-        "language": "ASL",
-        "verification_status": "auto_verified"
-      },
-      {
-        "gloss": "go",
-        "instance_id": 1,
-        "signature_file": "assets/signatures/asl/go_1.json",
-        "language": "ASL",
-        "verification_status": "manual_review"
-      },
-      {
-        "gloss": "go",
-        "instance_id": 2,
-        "signature_file": "assets/signatures/asl/go_2.json",
-        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=YdHKN_wHZqo",
+        "frame_range": {
+          "frame_start": 887,
+          "frame_end": 926
+        },
+        "landmark_format": "face:7",
+        "frames": 45,
         "verification_status": "auto_verified"
       }
     ],
@@ -126,7 +110,13 @@
         "gloss": "where",
         "instance_id": 0,
         "signature_file": "assets/signatures/asl/where_0.json",
-        "language": "ASL",
+        "source_url": "https://www.youtube.com/watch?v=A5dihMAjeTE",
+        "frame_range": {
+          "frame_start": 1881,
+          "frame_end": 1940
+        },
+        "landmark_format": "face:7",
+        "frames": 69,
         "verification_status": "auto_verified"
       }
     ],

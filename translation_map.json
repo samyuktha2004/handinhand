@@ -1,7 +1,22 @@
 {
-  "go_ref_yt": {
-    "signature_file": "assets/signatures/go_ref_yt.json",
-    "language": "ASL",
-    "frames": 90
+  "bsl_go": {
+    "signature_file": "assets/signatures/bsl/bsl_go.json",
+    "language": "BSL",
+    "frames": 33
+  },
+  "bsl_hello": {
+    "signature_file": "assets/signatures/bsl/bsl_hello.json",
+    "language": "BSL",
+    "frames": 36
+  },
+  "bsl_where": {
+    "signature_file": "assets/signatures/bsl/bsl_where.json",
+    "language": "BSL",
+    "frames": 32
+  },
+  "bsl_you": {
+    "signature_file": "assets/signatures/bsl/bsl_you.json",
+    "language": "BSL",
+    "frames": 30
   }
 }

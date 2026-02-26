@@ -2,15 +2,18 @@
   "_metadata": {
     "language": "bsl",
     "purpose": "BSL target signatures and embeddings for output",
-    "version": "1.0",
-    "last_updated": "2026-01-23T21:59:14.255635",
-    "description": "British Sign Language reference dataset - extracted from translation_map.json"
+    "version": "1.1",
+    "last_updated": "2026-02-26",
+    "description": "British Sign Language reference dataset. Re-extracted 2026-02-26 with face:7 landmarks (Phase 3 update). Source: individual pre-trimmed word clips in assets/raw_videos/lexicon/."
   },
   "C_GREETING_001": {
     "concept_name": "GREETING",
     "concept_description": "Greeting gesture - wave, acknowledgment",
     "target": {
       "signature_file": "assets/signatures/bsl/hello.json",
+      "source_video": "assets/raw_videos/lexicon/bsl_hello.mp4",
+      "frame_range": "full_video",
+      "landmark_format": "face:7",
       "language": "BSL",
       "frames": 36
     },
@@ -28,6 +31,9 @@
     "concept_description": "Pronoun - 'you' (singular/plural)",
     "target": {
       "signature_file": "assets/signatures/bsl/you.json",
+      "source_video": "assets/raw_videos/lexicon/bsl_you.mp4",
+      "frame_range": "full_video",
+      "landmark_format": "face:7",
       "language": "BSL",
       "frames": 30
     },
@@ -46,6 +52,9 @@
     "concept_description": "Directional movement - 'go away', 'departure'",
     "target": {
       "signature_file": "assets/signatures/bsl/go.json",
+      "source_video": "assets/raw_videos/lexicon/bsl_go.mp4",
+      "frame_range": "full_video",
+      "landmark_format": "face:7",
       "language": "BSL",
       "frames": 33
     },
@@ -64,6 +73,9 @@
     "concept_description": "Question about location - 'where'",
     "target": {
       "signature_file": "assets/signatures/bsl/where.json",
+      "source_video": "assets/raw_videos/lexicon/bsl_where.mp4",
+      "frame_range": "full_video",
+      "landmark_format": "face:7",
       "language": "BSL",
       "frames": 32
     },
