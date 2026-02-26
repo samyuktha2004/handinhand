@@ -35,6 +35,7 @@ import sys
 
 # Import registry loader for new multi-language structure
 from utils.registry_loader import RegistryLoader
+from utils.landmarks import POSE_INDICES, FACE_INDICES, FACE_START, FACE_EMBED_OFFSETS
 
 # ============================================================================
 # CONFIGURATION
@@ -122,25 +123,37 @@ class RecognitionEngine:
 
     def _normalize_landmarks(self, landmarks: np.ndarray) -> np.ndarray:
         """
-        Normalize landmarks to be body-centric (relative to shoulder center).
-        
-        Same normalization as used in embedding generation.
+        Normalize landmarks to body-centric coordinates (position + scale invariant).
+
+        Mirrors generate_embeddings.py._normalize_landmarks():
+        1. Subtract shoulder center (position invariant)
+        2. Divide by inter-shoulder distance (scale invariant — camera-distance and body-size)
         """
-        # If too few points, return as-is
         if landmarks is None or landmarks.shape[0] == 0:
             return landmarks
 
         landmarks_normalized = landmarks.copy()
 
-        # Heuristic 1: use first two pose points (common in 6-point pose) if valid
+        # Pre-compute shoulder width from pose points [0,1] before centering
+        shoulder_width = None
+        if landmarks.shape[0] >= 2:
+            _l = landmarks[0][:2]
+            _r = landmarks[1][:2]
+            if np.linalg.norm(_l) > 0.0 and np.linalg.norm(_r) > 0.0:
+                _sw = float(np.linalg.norm(_r - _l))
+                if _sw > 1e-4:
+                    shoulder_width = _sw
+
+        # Heuristic 1: use first two pose points (compact 6-pt pose: left/right shoulder)
         if landmarks.shape[0] >= 2:
             left = landmarks[0][:2]
             right = landmarks[1][:2]
             if (np.linalg.norm(left) > 0.0) and (np.linalg.norm(right) > 0.0):
                 shoulder_center = (left + right) / 2.0
-                # Only subtract from non-zero points
                 valid_mask = ~((np.abs(landmarks_normalized[:, 0]) < 1e-6) & (np.abs(landmarks_normalized[:, 1]) < 1e-6))
                 landmarks_normalized[valid_mask, :2] -= shoulder_center
+                if shoulder_width is not None:
+                    landmarks_normalized[valid_mask] /= shoulder_width
                 return landmarks_normalized
 
         # Heuristic 2: legacy indices (if full pose ordering present)
@@ -150,64 +163,78 @@ class RecognitionEngine:
             shoulder_center = (shoulder_left + shoulder_right) / 2.0
             valid_mask = ~((np.abs(landmarks_normalized[:, 0]) < 1e-6) & (np.abs(landmarks_normalized[:, 1]) < 1e-6))
             landmarks_normalized[valid_mask, :2] -= shoulder_center
+            if shoulder_width is not None:
+                landmarks_normalized[valid_mask] /= shoulder_width
             return landmarks_normalized
 
         # Fallback: no reliable shoulders, return as-is
         return landmarks_normalized
 
-    def _extract_frame_features(self, frame_idx: int) -> Optional[np.ndarray]:
+    def _array_to_joint_feat(self, landmarks: np.ndarray) -> np.ndarray:
         """
-        Extract features from current window of landmarks.
-        
-        Process:
-        1. Get latest 52 landmarks (pose + hands + face) from window
-        2. Normalize (body-centric)
-        3. Flatten to 1D vector
+        Process compact (68,3) array → normalized joint feature vector.
+
+        Mirrors generate_embeddings.py._frame_to_embedding() for numpy input:
+        1. Select face embedding subset (68 → 55 pts via FACE_EMBED_OFFSETS)
+        2. Body-centric normalize (shoulder center from landmarks[0,1])
+        3. Flatten to 1D float32
         """
-        if len(self.landmark_window) == 0:
-            return None
-        
-        # Use latest frame in window
-        landmarks = self.landmark_window[-1]
-        
-        # Normalize (body-centric)
-        landmarks_norm = self._normalize_landmarks(landmarks)
-        
-        # Flatten
-        features = landmarks_norm.flatten().astype(np.float32)
-        
-        # Pad to 512 if needed (same as embedding generation)
-        if len(features) < 512:
-            features = np.pad(features, (0, 512 - len(features)), mode='constant')
-        
-        return features[:512]
+        # Select face embedding subset (68 → 55 pts)
+        if len(landmarks) > FACE_START:
+            face_sub = landmarks[FACE_START:]
+            embed_face = np.zeros((len(FACE_EMBED_OFFSETS), 3), dtype=np.float32)
+            for i, off in enumerate(FACE_EMBED_OFFSETS):
+                if off < len(face_sub):
+                    embed_face[i] = face_sub[off]
+            landmarks_embed = np.vstack([landmarks[:FACE_START], embed_face])
+        else:
+            landmarks_embed = landmarks
+        landmarks_norm = self._normalize_landmarks(landmarks_embed)
+        return landmarks_norm.flatten().astype(np.float32)
 
     def _compute_live_embedding(self) -> Optional[np.ndarray]:
         """
-        Compute embedding from accumulated window.
-        
-        Global Average Pooling: average all frames in window.
+        Compute 4-stream embedding from accumulated window.
+
+        Streams: joint + bone + joint_motion + bone_motion → concat → 654-dim (natural, no truncation).
+        Mirrors generate_embeddings.py._compute_signature_embedding() for live input.
         """
         if len(self.landmark_window) == 0:
             return None
-        
-        # Extract features for each frame in window
-        frame_features = []
-        for i in range(len(self.landmark_window)):
-            # Get landmarks for frame i
-            landmarks = self.landmark_window[i]
-            landmarks_norm = self._normalize_landmarks(landmarks)
-            features = landmarks_norm.flatten().astype(np.float32)
-            
-            # Pad to 512
-            if len(features) < 512:
-                features = np.pad(features, (0, 512 - len(features)), mode='constant')
-            
-            frame_features.append(features[:512])
-        
-        # Global Average Pooling: average across all frames in window
-        live_embedding = np.mean(frame_features, axis=0)
-        return live_embedding.astype(np.float32)
+
+        joint_features, bone_features, joint_motion, bone_motion = [], [], [], []
+        prev_joints, prev_bones = None, None
+
+        for landmarks in self.landmark_window:
+            joints = self._array_to_joint_feat(landmarks)
+            joint_features.append(joints)
+
+            num_coords = joints.shape[0] // 3
+            joints_3d = joints.reshape((num_coords, 3))
+            bones = (joints_3d[1:] - joints_3d[:-1]).flatten().astype(np.float32)
+            bone_features.append(bones)
+
+            joint_motion.append(np.zeros_like(joints) if prev_joints is None
+                                else joints - prev_joints)
+            if prev_bones is None:
+                bone_motion.append(np.zeros_like(bones))
+            else:
+                minlen = min(len(bones), len(prev_bones))
+                bm = np.zeros_like(bones)
+                bm[:minlen] = bones[:minlen] - prev_bones[:minlen]
+                bone_motion.append(bm)
+
+            prev_joints, prev_bones = joints, bones
+
+        combined = np.concatenate([
+            np.mean(joint_features, axis=0),
+            np.mean(bone_features, axis=0),
+            np.mean(joint_motion, axis=0),
+            np.mean(bone_motion, axis=0),
+        ])
+        # Natural size = 654 (55×3 joint + 54×3 bone + 55×3 jmotion + 54×3 bmotion)
+        # No truncation — mirrors generate_embeddings.py EMBEDDING_DIM=654
+        return combined.astype(np.float32)
 
     def recognize(self) -> Optional[RecognitionResult]:
         """
@@ -263,7 +290,7 @@ class RecognitionEngine:
         
         # Get BSL target
         bsl_target = "unknown.json"
-        for concept_key, concept_data in self.registry.items():
+        for concept_key, concept_data in self.asl_registry.items():
             if concept_data.get("concept_name") == best_concept:
                 bsl_target = concept_data.get("bsl_target", {}).get("signature_file", "unknown.json")
                 break
@@ -284,16 +311,17 @@ class RecognitionEngine:
         
         h, w = frame.shape[:2]
         
-        # Draw pose connections
+        # Draw pose connections — compact 6-pt indices:
+        # 0=L-shoulder, 1=R-shoulder, 2=L-elbow, 3=R-elbow, 4=L-wrist, 5=R-wrist
         POSE_CONNECTIONS = [
-            (11, 12),  # shoulders
-            (11, 13), (13, 15),  # left arm
-            (12, 14), (14, 16),  # right arm
-            (11, 23), (12, 24),  # torso to hips
+            (0, 1),          # shoulders
+            (0, 2), (2, 4),  # left arm
+            (1, 3), (3, 5),  # right arm
         ]
-        
-        # Draw hand connections (simplified - just wrists + fingers)
-        HAND_WRISTS = [(16, 18), (15, 17)]  # wrists to elbows
+
+        # Wrist to hand-wrist: compact pose wrist → hand landmark[0]
+        # Left hand starts at index 6, right hand at index 27
+        HAND_WRISTS = [(4, 6), (5, 27)]
         
         # Create overlay for alpha blending
         overlay = frame.copy()
@@ -318,12 +346,50 @@ class RecognitionEngine:
                 if 0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h:
                     cv2.line(overlay, (x1, y1), (x2, y2), color, 1)
         
-        # Draw joints (circles)
-        for landmark in landmarks[:25]:  # Just pose landmarks
+        # Draw pose joints (circles)
+        for landmark in landmarks[:6]:  # Compact pose: 6 pts only
             x, y = int(landmark[0] * w), int(landmark[1] * h)
             if 0 <= x < w and 0 <= y < h:
                 cv2.circle(overlay, (x, y), 3, color, -1)
-        
+
+        # Draw full hand topology — standard MediaPipe 21-point connections
+        HAND_CONNECTIONS = [
+            (0,1),(1,2),(2,3),(3,4),
+            (0,5),(5,6),(6,7),(7,8),
+            (0,9),(9,10),(10,11),(11,12),
+            (0,13),(13,14),(14,15),(15,16),
+            (0,17),(17,18),(18,19),(19,20),
+            (5,9),(9,13),(13,17),
+        ]
+        LEFT_HAND_OFFSET = 6   # left hand at compact indices 6–26
+        RIGHT_HAND_OFFSET = 27  # right hand at compact indices 27–47
+
+        lh = landmarks[6:27] if len(landmarks) >= 27 else None
+        if lh is not None and lh.sum() > 1e-6:
+            for i, j in HAND_CONNECTIONS:
+                ci, cj = i + LEFT_HAND_OFFSET, j + LEFT_HAND_OFFSET
+                x1, y1 = int(landmarks[ci][0] * w), int(landmarks[ci][1] * h)
+                x2, y2 = int(landmarks[cj][0] * w), int(landmarks[cj][1] * h)
+                if 0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h:
+                    cv2.line(overlay, (x1, y1), (x2, y2), color, 1)
+            for lm in lh:
+                x, y = int(lm[0] * w), int(lm[1] * h)
+                if 0 <= x < w and 0 <= y < h:
+                    cv2.circle(overlay, (x, y), 2, color, -1)
+
+        rh = landmarks[27:48] if len(landmarks) >= 48 else None
+        if rh is not None and rh.sum() > 1e-6:
+            for i, j in HAND_CONNECTIONS:
+                ci, cj = i + RIGHT_HAND_OFFSET, j + RIGHT_HAND_OFFSET
+                x1, y1 = int(landmarks[ci][0] * w), int(landmarks[ci][1] * h)
+                x2, y2 = int(landmarks[cj][0] * w), int(landmarks[cj][1] * h)
+                if 0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h:
+                    cv2.line(overlay, (x1, y1), (x2, y2), color, 1)
+            for lm in rh:
+                x, y = int(lm[0] * w), int(lm[1] * h)
+                if 0 <= x < w and 0 <= y < h:
+                    cv2.circle(overlay, (x, y), 2, color, -1)
+
         # Blend with original frame
         result = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
         return result
@@ -405,23 +471,41 @@ class RecognitionEngine:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.holistic.process(rgb_frame)
                 
-                # Extract landmarks
+                # Extract landmarks — compact (68,3) array matching extract_signatures.py format
                 if results.pose_landmarks:
-                    landmarks = np.array([
-                        [lm.x, lm.y, lm.z] for lm in results.pose_landmarks.landmark
-                    ])
+                    frame_landmarks = []
+                    # Compact 6-pt pose (POSE_INDICES = [11,12,13,14,15,16])
+                    for idx in POSE_INDICES:
+                        lm = results.pose_landmarks.landmark[idx]
+                        frame_landmarks.append([lm.x, lm.y, lm.z])
+                    # Left hand (21 pts)
+                    if results.left_hand_landmarks:
+                        for lm in results.left_hand_landmarks.landmark:
+                            frame_landmarks.append([lm.x, lm.y, lm.z])
+                    else:
+                        frame_landmarks.extend([[0., 0., 0.]] * 21)
+                    # Right hand (21 pts)
+                    if results.right_hand_landmarks:
+                        for lm in results.right_hand_landmarks.landmark:
+                            frame_landmarks.append([lm.x, lm.y, lm.z])
+                    else:
+                        frame_landmarks.extend([[0., 0., 0.]] * 21)
+                    # Face (FACE_INDICES pts — 20)
+                    if results.face_landmarks:
+                        for idx in FACE_INDICES:
+                            lm = results.face_landmarks.landmark[idx]
+                            frame_landmarks.append([lm.x, lm.y, lm.z])
+                    else:
+                        frame_landmarks.extend([[0., 0., 0.]] * len(FACE_INDICES))
+                    landmarks = np.array(frame_landmarks, dtype=np.float32)  # (68, 3)
                     self.landmark_window.append(landmarks)
-                
+
                 # Attempt recognition
                 result = self.recognize()
-                
+
                 # Draw debug visualization (if enabled)
                 if self.debug and results.pose_landmarks:
-                    landmarks = np.array([
-                        [lm.x, lm.y, lm.z] for lm in results.pose_landmarks.landmark
-                    ])
-                    
-                    # Draw live skeleton (bold green)
+                    # Draw live skeleton (bold green) — reuses landmarks already assembled above
                     frame = self._draw_skeleton(frame, landmarks, COLOR_LIVE, alpha=0.8)
                     
                     # TODO: Draw ghost skeleton (golden signature)

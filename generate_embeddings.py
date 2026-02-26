@@ -19,6 +19,7 @@ Result:
 """
 
 import json
+import re
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -43,8 +44,9 @@ SIGNATURES_DIR = "assets/signatures"
 SHOULDER_CENTER_LEFT  = LEFT_SHOULDER_IDX   # 0 in compact pose, MediaPipe index 11
 SHOULDER_CENTER_RIGHT = RIGHT_SHOULDER_IDX  # 1 in compact pose, MediaPipe index 12
 
-# Embedding dimension (Global Average Pooling output)
-EMBEDDING_DIM = 512
+# Embedding dimension — natural 4-stream 3D size (no truncation):
+# joint(55×3=165) + bone(54×3=162) + joint_motion(165) + bone_motion(162) = 654
+EMBEDDING_DIM = 654
 
 
 class EmbeddingGenerator:
@@ -82,14 +84,28 @@ class EmbeddingGenerator:
         shoulder_center: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
-        Normalize landmarks to be body-centric (relative to shoulder center).
-        
+        Normalize landmarks to body-centric coordinates (position + scale invariant).
+
         Process:
-        1. Calculate shoulder center: mean of left (11) and right (12) shoulders
-        2. Subtract center from all landmarks
-        3. Return normalized array
+        1. Subtract shoulder center (position invariant)
+        2. Divide by inter-shoulder distance (scale invariant — camera-distance and body-size)
+
+        Scale normalization: divides all (x, y, z) by shoulder width so the result is in
+        "body-width units" regardless of signer size or distance from camera. This is the
+        industry-standard approach used by pose-format / sign-language-processing ecosystem.
         """
         landmarks = np.array(landmarks, dtype=np.float32)
+
+        # Pre-compute shoulder width from pose points [0,1] (always left/right shoulder in
+        # compact 6-pt pose layout). Computed before centering to use original coordinates.
+        shoulder_width = None
+        if landmarks.shape[0] >= 2:
+            _l = landmarks[0][:2]
+            _r = landmarks[1][:2]
+            if np.linalg.norm(_l) > 0.0 and np.linalg.norm(_r) > 0.0:
+                _sw = float(np.linalg.norm(_r - _l))
+                if _sw > 1e-4:
+                    shoulder_width = _sw
 
         # If caller provided shoulder center, use it (common case)
         if shoulder_center is not None:
@@ -99,6 +115,8 @@ class EmbeddingGenerator:
                 & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
             )
             landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
+            if shoulder_width is not None:
+                landmarks_normalized[valid_mask] /= shoulder_width
             return landmarks_normalized
 
         # Heuristics: detect shoulders from pose block (first two points if present)
@@ -106,26 +124,30 @@ class EmbeddingGenerator:
         if landmarks.shape[0] >= 2:
             left = landmarks[0][:2]
             right = landmarks[1][:2]
-            # If coordinates look like normalized coords (0..1) or pixel coords (>1), both handled
+            # Handles both normalized coords (0..1) and pixel coords (>1)
             if (np.linalg.norm(left) > 0.0) and (np.linalg.norm(right) > 0.0):
-                shoulder_center = (left + right) / 2.0
+                sc = (left + right) / 2.0
                 valid_mask = np.logical_not(
                     (np.abs(landmarks_normalized[:, 0]) < 1e-6)
                     & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
                 )
-                landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
+                landmarks_normalized[valid_mask, :2] -= sc
+                if shoulder_width is not None:
+                    landmarks_normalized[valid_mask] /= shoulder_width
                 return landmarks_normalized
 
         # Fallback: if landmarks include full body ordering and known indices (legacy), try those
         if landmarks.shape[0] > max(SHOULDER_CENTER_LEFT, SHOULDER_CENTER_RIGHT):
             shoulder_left = landmarks[SHOULDER_CENTER_LEFT][:2]
             shoulder_right = landmarks[SHOULDER_CENTER_RIGHT][:2]
-            shoulder_center = (shoulder_left + shoulder_right) / 2.0
+            sc = (shoulder_left + shoulder_right) / 2.0
             valid_mask = np.logical_not(
                 (np.abs(landmarks_normalized[:, 0]) < 1e-6)
                 & (np.abs(landmarks_normalized[:, 1]) < 1e-6)
             )
-            landmarks_normalized[valid_mask, :2] -= shoulder_center[:2]
+            landmarks_normalized[valid_mask, :2] -= sc
+            if shoulder_width is not None:
+                landmarks_normalized[valid_mask] /= shoulder_width
             return landmarks_normalized
 
         # Last resort: return as-is
@@ -229,11 +251,10 @@ class EmbeddingGenerator:
             joints = self._frame_to_embedding(frame)
             joint_features.append(joints)
 
-            # bone features: simple difference between consecutive landmarks
-            # reshape joints into (N,3)
+            # bone features: 3D difference vectors between consecutive landmarks
             num_coords = joints.shape[0] // 3
-            joints_xy = joints.reshape((num_coords, 3))[:, :2]
-            bones = (joints_xy[1:] - joints_xy[:-1]).flatten().astype(np.float32)
+            joints_3d = joints.reshape((num_coords, 3))
+            bones = (joints_3d[1:] - joints_3d[:-1]).flatten().astype(np.float32)
             bone_features.append(bones)
 
             if prev_joints is None:
@@ -345,6 +366,8 @@ class EmbeddingGenerator:
                     # Save joint-only and combined embeddings to separate files
                     base_npy = concept_data.get("embedding_mean_file")
                     if base_npy:
+                        # Strip any existing stream suffixes so path derivation is idempotent
+                        base_npy = re.sub(r'(_combined|_joint)+\.npy$', '.npy', base_npy)
                         os.makedirs(os.path.dirname(base_npy), exist_ok=True)
                         joint_path = base_npy.replace('.npy', '_joint.npy')
                         combined_path = base_npy.replace('.npy', '_combined.npy')
@@ -352,6 +375,8 @@ class EmbeddingGenerator:
                         np.save(combined_path, asl_embs['combined'])
                         joint_map[concept_id] = joint_path
                         combined_map[concept_id] = combined_path
+                        # Update registry to point to combined embedding
+                        self.asl_registry[concept_id]["embedding_mean_file"] = combined_path
                         print(f"   ✅ ASL joint saved: {joint_path}")
                         print(f"   ✅ ASL combined saved: {combined_path}")
                     else:
@@ -376,6 +401,8 @@ class EmbeddingGenerator:
                 if bsl_embedding is not None:
                     npy_path = concept_data.get("embedding_mean_file")
                     if npy_path:
+                        # Strip any existing stream suffixes so path derivation is idempotent
+                        npy_path = re.sub(r'(_combined|_joint)+\.npy$', '.npy', npy_path)
                         os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                         joint_path = npy_path.replace('.npy', '_joint.npy')
                         combined_path = npy_path.replace('.npy', '_combined.npy')
@@ -383,6 +410,8 @@ class EmbeddingGenerator:
                         np.save(combined_path, bsl_embedding['combined'])
                         joint_map[concept_id] = joint_path
                         combined_map[concept_id] = combined_path
+                        # Update registry to point to combined embedding
+                        self.bsl_registry[concept_id]["embedding_mean_file"] = combined_path
                         print(f"   ✅ BSL joint saved: {joint_path}")
                         print(f"   ✅ BSL combined saved: {combined_path}")
                     else:

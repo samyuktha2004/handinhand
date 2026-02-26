@@ -402,12 +402,22 @@ python3 generate_embeddings.py
 
 ## Metrics to Track
 
-| Metric                 | Target     | Current | Status |
-| ---------------------- | ---------- | ------- | ------ |
-| Recognition Average    | ≥0.70      | 0.7339  | ✅     |
-| ASL-BSL Distinctness   | <0.80      | 0.708   | ✅     |
-| Arm Length Consistency | ≤20px diff | 9px     | ✅     |
-| Blue Stub Bug          | None       | Fixed   | ✅     |
+| Metric | Target | Current | Status |
+|--------|--------|---------|--------|
+| Recognition Average (stored-to-stored, joint-only) | ≥0.70 | 0.7339 | ✅ (pre-Phase 4 baseline) |
+| ASL-BSL 4-stream final baseline (3D bones, 654-dim) | <0.80 | **0.7178 mean** | ✅ |
+| ASL-BSL per-concept: GREETING | — | 0.6932 | — |
+| ASL-BSL per-concept: YOU | — | 0.8023 | — |
+| ASL-BSL per-concept: GO | — | 0.4766 | — |
+| ASL-BSL per-concept: WHERE | — | 0.8992 | — |
+| Probe STRICT: up_vs_down | <0.90 | 0.6755 | ✅ |
+| Probe STRICT: left_vs_right | <0.90 | 0.6932 | ✅ |
+| Arm Length Consistency | ≤20px diff | 9px | ✅ |
+| Blue Stub Bug | None | Fixed | ✅ |
+| Scale normalization (÷ shoulder_width) | Implemented | ✅ Feb 26 | ✅ |
+| Z-drop fix (3D bone vectors) | Implemented | ✅ Feb 26 | ✅ |
+| EMBEDDING_DIM (natural, no truncation) | 654 | ✅ Feb 26 | ✅ |
+| Hand skeleton display (full 21-pt topology) | Implemented | ✅ Feb 26 | ✅ |
 
 ---
 

@@ -238,7 +238,16 @@ class SkeletonRenderer:
             expected_upper = UPPER_ARM * scale
             expected_lower = LOWER_ARM * scale
             
-            # Elbows - follow detected angles from raw pose, fixed segment length
+            # Arm segment draw lengths scaled by detected body size.
+            # In NORM mode scale≈1.0 (shoulders already at reference width).
+            # In RAW mode scale = detected_shoulder_px / SHOULDER_WIDTH, so the
+            # drawn arm proportionally matches the signer's on-screen size.
+            # This eliminates the hand-arm gap that appears when a large/close
+            # signer's arm extends far beyond the fixed-length reference body.
+            draw_upper = UPPER_ARM * scale
+            draw_lower = LOWER_ARM * scale
+
+            # Elbows - follow detected angles from raw pose, body-scaled length
             if left_shoulder_raw and left_elbow_raw and self._is_reasonable_length(
                 self._distance(left_shoulder_raw, left_elbow_raw),
                 expected_upper,
@@ -249,11 +258,11 @@ class SkeletonRenderer:
                 positions['left_elbow'] = self._point_at_angle(
                     positions['left_shoulder'],
                     left_angle,
-                    UPPER_ARM,
+                    draw_upper,
                 )
             else:
                 positions['left_elbow'] = self.ref_positions['left_elbow']
-            
+
             if right_shoulder_raw and right_elbow_raw and self._is_reasonable_length(
                 self._distance(right_shoulder_raw, right_elbow_raw),
                 expected_upper,
@@ -264,43 +273,50 @@ class SkeletonRenderer:
                 positions['right_elbow'] = self._point_at_angle(
                     positions['right_shoulder'],
                     right_angle,
-                    UPPER_ARM,
+                    draw_upper,
                 )
             else:
                 positions['right_elbow'] = self.ref_positions['right_elbow']
-            
-            # Wrists - follow detected angles from raw pose, fixed segment length
-            if left_elbow_raw and left_wrist_raw and self._is_reasonable_length(
-                self._distance(left_elbow_raw, left_wrist_raw),
-                expected_lower,
-                min_ratio=0.35,
-                max_ratio=2.0,
-            ):
+
+            # Wrists — decouple angle storage from position computation.
+            # Angle is stored from raw data REGARDLESS of length plausibility so that
+            # _draw_hand() / _draw_neutral_hand() always orients the hand correctly,
+            # even when the arm segment fails the length check and falls back to the
+            # reference position. Without this, the neutral hand always points straight
+            # down (rotation=0) when the wrist fails validation — "robot hand" bug.
+            if left_elbow_raw and left_wrist_raw:
                 left_wrist_angle = self._angle_to(left_elbow_raw, left_wrist_raw)
-                positions['left_wrist_angle'] = left_wrist_angle
-                positions['left_wrist'] = self._point_at_angle(
-                    positions['left_elbow'],
-                    left_wrist_angle,
-                    LOWER_ARM,
-                )
+                positions['left_wrist_angle'] = left_wrist_angle  # always store angle
+                if self._is_reasonable_length(
+                    self._distance(left_elbow_raw, left_wrist_raw),
+                    expected_lower,
+                    min_ratio=0.35,
+                    max_ratio=2.0,
+                ):
+                    positions['left_wrist'] = self._point_at_angle(
+                        positions['left_elbow'], left_wrist_angle, draw_lower)
+                else:
+                    positions['left_wrist'] = self.ref_positions['left_wrist']
             else:
                 positions['left_wrist'] = self.ref_positions['left_wrist']
-            
-            if right_elbow_raw and right_wrist_raw and self._is_reasonable_length(
-                self._distance(right_elbow_raw, right_wrist_raw),
-                expected_lower,
-                min_ratio=0.35,
-                max_ratio=2.0,
-            ):
+                positions['left_wrist_angle'] = math.pi / 2  # fallback: straight down
+
+            if right_elbow_raw and right_wrist_raw:
                 right_wrist_angle = self._angle_to(right_elbow_raw, right_wrist_raw)
-                positions['right_wrist_angle'] = right_wrist_angle
-                positions['right_wrist'] = self._point_at_angle(
-                    positions['right_elbow'],
-                    right_wrist_angle,
-                    LOWER_ARM,
-                )
+                positions['right_wrist_angle'] = right_wrist_angle  # always store angle
+                if self._is_reasonable_length(
+                    self._distance(right_elbow_raw, right_wrist_raw),
+                    expected_lower,
+                    min_ratio=0.35,
+                    max_ratio=2.0,
+                ):
+                    positions['right_wrist'] = self._point_at_angle(
+                        positions['right_elbow'], right_wrist_angle, draw_lower)
+                else:
+                    positions['right_wrist'] = self.ref_positions['right_wrist']
             else:
                 positions['right_wrist'] = self.ref_positions['right_wrist']
+                positions['right_wrist_angle'] = math.pi / 2  # fallback: straight down
 
             # Face center for dynamic head/neck (optional)
             face = landmarks.get('face')
@@ -311,8 +327,10 @@ class SkeletonRenderer:
                     if pt:
                         face_points.append(pt)
                 if face_points:
-                    avg_x = int(sum(p[0] for p in face_points) / len(face_points))
-                    avg_y = int(sum(p[1] for p in face_points) / len(face_points))
+                    # Use median not mean: one noisy face point can shift mean by 20-30px
+                    # per frame, causing the head to "jump". Median is robust to outliers.
+                    avg_x = int(np.median([p[0] for p in face_points]))
+                    avg_y = int(np.median([p[1] for p in face_points]))
                     positions['face_center'] = (avg_x, avg_y)
         else:
             # No pose data - use all reference positions
@@ -331,8 +349,15 @@ class SkeletonRenderer:
             return None
         return (x, y)
     
-    def _in_bounds(self, x: int, y: int, margin: int = 10) -> bool:
-        """Check if point is within frame bounds."""
+    def _in_bounds(self, x: int, y: int, margin: int = None) -> bool:
+        """Check if point is within frame bounds with a resolution-adaptive margin.
+
+        Margin scales to ~1.5% of the shorter frame dimension so that it remains
+        proportionally correct across frame sizes (640×480, 1280×960, 320×240).
+        For 640×480: max(5, 480//48) = 10px. For 1280×960: 20px. For 320×240: 5px.
+        """
+        if margin is None:
+            margin = max(5, min(self.width, self.height) // 48)
         return margin <= x < self.width - margin and margin <= y < self.height - margin
     
     def _distance(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
@@ -470,7 +495,10 @@ class SkeletonRenderer:
             # Draw actual hand data with fixed-size fingers
             self._draw_hand_from_data(frame, hand_data, wrist_pos, side)
         else:
-            # Draw neutral reference hand
+            # Draw neutral reference hand — mark wrist with a hollow circle to indicate
+            # "detection failed / fallback" (vs a detected-but-resting hand, which has
+            # valid hand_data and draws normally with real landmarks).
+            cv2.circle(frame, wrist_pos, 6, COLOR_MISSING_DOT, 1, cv2.LINE_AA)
             self._draw_neutral_hand(frame, wrist_pos, side, wrist_angle, use_missing_style=True)
     
     def _draw_hand_from_data(self, frame: np.ndarray, hand_data: np.ndarray,
@@ -530,11 +558,14 @@ class SkeletonRenderer:
         for i in range(len(mcp_points) - 1):
             cv2.line(frame, mcp_points[i], mcp_points[i + 1], COLOR_BODY, 1, cv2.LINE_AA)
 
-        # Palm width validation (index MCP to pinky MCP) - tighter bounds
+        # Palm width validation (index MCP to pinky MCP).
+        # min_ratio=0.3 (was 0.6): allows wrist rotation up to ~72° from frontal plane.
+        # cos(55°)≈0.57 < old 0.60 caused neutral fallback for any wrist-rotated sign
+        # (ASK, THANK-YOU, SHOW, PASS etc). max_ratio=1.6 allows spread-fingered palms.
         if len(mcp_points) >= 2:
             palm_span = self._distance(mcp_points[0], mcp_points[-1])
             expected_palm = PALM_WIDTH * self.current_scale
-            if not self._is_reasonable_length(palm_span, expected_palm, min_ratio=0.6, max_ratio=1.4):
+            if not self._is_reasonable_length(palm_span, expected_palm, min_ratio=0.3, max_ratio=1.6):
                 self._draw_neutral_hand(frame, wrist_pos, side)
                 return
         
@@ -572,11 +603,15 @@ class SkeletonRenderer:
                         finger_incomplete = True
                         break
                     
-                    # Validate segment length against expected proportions
+                    # Validate segment length against expected proportions.
+                    # min_ratio=0.20 (was 0.50): allows fully curled finger segments —
+                    # a PIP joint at full curl projects to ~25% of its extended length in
+                    # 2D. The old 0.50 minimum rejected closed fists and any bent finger,
+                    # causing fallback to neutral hand for all non-flat handshapes.
                     expected = lengths[i] if i < len(lengths) else 0.0
                     if expected > 0.0:
                         seg_len = self._distance(pt1, pt2)
-                        min_len = expected * 0.5
+                        min_len = expected * 0.20  # was 0.50 — too strict for curled fingers
                         max_len = expected * 1.5
                         if not (min_len <= seg_len <= max_len):
                             prev_valid = False

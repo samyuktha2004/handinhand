@@ -89,10 +89,10 @@ class SkeletonDebugger:
         self.show_joints = True
         self.completed_lang1 = False  # Track if lang1 video finished
         self.completed_lang2 = False  # Track if lang2 video finished
-        # FIX: Signatures use 6-point partial skeleton, not 33-point full skeleton
-        # Normalization assumes 33 points and fails on partial skeletons
-        # DEFAULT: normalize_display OFF for partial skeletons
-        self.normalize_display = False
+        # Auto-normalize in dual/side-by-side mode: signers have different camera
+        # positions and sizes, making RAW mode misleading for comparison.
+        # Single-screen defaults OFF (raw view is useful for individual inspection).
+        self.normalize_display = side_by_side
         
         # Get dimensions from metadata
         self.width = self.sig1_dict.get('metadata', {}).get('frame_width', 640)
@@ -211,21 +211,26 @@ class SkeletonDebugger:
     def _draw_sync_info(self, frame: np.ndarray) -> None:
         """Draw synchronization info on frame."""
         h, w = frame.shape[:2]
-        
-        frame_diff = len(self.frames1) - len(self.frames2)
-        status = "SYNC" if frame_diff == 0 else f"DESYNC ({frame_diff} frames)"
-        color = (0, 255, 0) if frame_diff == 0 else (0, 165, 255)
-        
+
+        frame_diff = abs(len(self.frames1) - len(self.frames2))
+        if frame_diff == 0:
+            status = "SYNC"
+            color = (0, 255, 0)
+        else:
+            # Percentage-based sync is active: both signs advance at same relative rate
+            status = f"% SYNC ({frame_diff}f diff)"
+            color = (0, 255, 0)  # Green — handled
+
         cv2.putText(frame, status, (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX,
                    0.6, color, 2)
     
     def _draw_normalization_info(self, frame: np.ndarray) -> None:
         """Draw normalization status."""
         h, w = frame.shape[:2]
-        status = "NORMALIZED" if self.normalize_display else "RAW"
+        status = "NORM" if self.normalize_display else "RAW"
         color = (0, 255, 0) if self.normalize_display else (0, 165, 255)
-        
-        cv2.putText(frame, status, (w - 200, 30), cv2.FONT_HERSHEY_SIMPLEX,
+
+        cv2.putText(frame, status, (w - 80, 30), cv2.FONT_HERSHEY_SIMPLEX,
                    0.6, color, 2)
 
     def _draw_legend(self, frame: np.ndarray) -> None:
@@ -299,11 +304,18 @@ class SkeletonDebugger:
         # Get landmarks as arrays (extract_landmarks_from_signature returns arrays)
         lm1 = None
         lm2 = None
-        
-        # Clamp frame index to valid range (freeze on last frame)
-        idx1 = max(0, min(self.current_frame, len(self.frames1) - 1)) if len(self.frames1) > 0 else 0
-        idx2 = max(0, min(self.current_frame, len(self.frames2) - 1)) if len(self.frames2) > 0 else 0
-        
+
+        # Percentage-based frame sync: both signatures advance at the same relative
+        # rate through their respective loops, regardless of absolute frame count.
+        # Frame-count differences (e.g. ASL 69 vs BSL 32) are handled transparently.
+        if len(self.frames1) > 0 and len(self.frames2) > 0 and len(self.frames1) != len(self.frames2):
+            pct = self.current_frame / max(1, self.max_frame - 1)
+            idx1 = min(int(pct * len(self.frames1)), len(self.frames1) - 1)
+            idx2 = min(int(pct * len(self.frames2)), len(self.frames2) - 1)
+        else:
+            idx1 = max(0, min(self.current_frame, len(self.frames1) - 1)) if len(self.frames1) > 0 else 0
+            idx2 = max(0, min(self.current_frame, len(self.frames2) - 1)) if len(self.frames2) > 0 else 0
+
         if len(self.frames1) > 0:
             lm1 = self.frames1[idx1]
         if len(self.frames2) > 0:
@@ -336,30 +348,21 @@ class SkeletonDebugger:
                 show_joints=self.show_joints
             )
         
-        # Add info (normalized size)
-        # Frame info with completion indicator for lang1
+        # Add info (normalized size) — use idx1/idx2 not current_frame (% sync may diverge)
+        pct1 = int(100 * idx1 / max(1, len(self.frames1) - 1)) if len(self.frames1) > 1 else 100
+        pct2 = int(100 * idx2 / max(1, len(self.frames2) - 1)) if len(self.frames2) > 1 else 100
+
         lang1_indicator = "[DONE]" if self.completed_lang1 else "[PLAY]"
-        cv2.putText(frame1_blank, f"{lang1_indicator} {self.lang1} | Frame {self.current_frame + 1}/{len(self.frames1)}", 
+        cv2.putText(frame1_blank, f"{lang1_indicator} {self.lang1} | Frame {idx1+1}/{len(self.frames1)} ({pct1}%)",
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        cv2.putText(frame1_blank, f"Sig: {self.sig1_path.stem}", 
+        cv2.putText(frame1_blank, f"Sig: {self.sig1_path.stem}",
                    (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
-        
-        # Show "ended" if video is out of bounds
-        if self.current_frame >= len(self.frames1):
-            cv2.putText(frame1_blank, "[Video ended]", (10, 150), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
-        
-        # Frame info with completion indicator for lang2
+
         lang2_indicator = "[DONE]" if self.completed_lang2 else "[PLAY]"
-        cv2.putText(frame2_blank, f"{lang2_indicator} {self.lang2} | Frame {self.current_frame + 1}/{len(self.frames2)}", 
+        cv2.putText(frame2_blank, f"{lang2_indicator} {self.lang2} | Frame {idx2+1}/{len(self.frames2)} ({pct2}%)",
                    (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        cv2.putText(frame2_blank, f"Sig: {self.sig2_path.stem}", 
+        cv2.putText(frame2_blank, f"Sig: {self.sig2_path.stem}",
                    (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
-        
-        # Show "ended" if video is out of bounds
-        if self.current_frame >= len(self.frames2):
-            cv2.putText(frame2_blank, "[Video ended]", (10, 150), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
         
         # Combine side-by-side
         combined = np.hstack([frame1_blank, frame2_blank])

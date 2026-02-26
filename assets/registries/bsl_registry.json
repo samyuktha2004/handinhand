@@ -17,7 +17,7 @@
       "language": "BSL",
       "frames": 36
     },
-    "embedding_mean_file": "assets/embeddings/bsl/hello_mean.npy",
+    "embedding_mean_file": "assets/embeddings/bsl/hello_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "right"
@@ -37,7 +37,7 @@
       "language": "BSL",
       "frames": 30
     },
-    "embedding_mean_file": "assets/embeddings/bsl/you_mean.npy",
+    "embedding_mean_file": "assets/embeddings/bsl/you_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",
@@ -58,7 +58,7 @@
       "language": "BSL",
       "frames": 33
     },
-    "embedding_mean_file": "assets/embeddings/bsl/go_mean.npy",
+    "embedding_mean_file": "assets/embeddings/bsl/go_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",
@@ -79,7 +79,7 @@
       "language": "BSL",
       "frames": 32
     },
-    "embedding_mean_file": "assets/embeddings/bsl/where_mean.npy",
+    "embedding_mean_file": "assets/embeddings/bsl/where_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",

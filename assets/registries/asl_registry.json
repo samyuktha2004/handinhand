@@ -37,7 +37,7 @@
         "verification_status": "auto_verified"
       }
     ],
-    "embedding_mean_file": "assets/embeddings/asl/hello_mean.npy",
+    "embedding_mean_file": "assets/embeddings/asl/hello_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "right"
@@ -64,7 +64,7 @@
         "verification_status": "auto_verified"
       }
     ],
-    "embedding_mean_file": "assets/embeddings/asl/you_mean.npy",
+    "embedding_mean_file": "assets/embeddings/asl/you_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",
@@ -92,7 +92,7 @@
         "verification_status": "auto_verified"
       }
     ],
-    "embedding_mean_file": "assets/embeddings/asl/go_mean.npy",
+    "embedding_mean_file": "assets/embeddings/asl/go_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",
@@ -120,7 +120,7 @@
         "verification_status": "auto_verified"
       }
     ],
-    "embedding_mean_file": "assets/embeddings/asl/where_mean.npy",
+    "embedding_mean_file": "assets/embeddings/asl/where_mean_combined.npy",
     "metadata": {
       "hands_involved": [
         "left",

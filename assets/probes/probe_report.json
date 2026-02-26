@@ -82,12 +82,12 @@
     }
   },
   "pair_checks": {
-    "up_vs_down": 0.6755236983299255,
-    "left_vs_right": 0.6932066082954407,
-    "open_vs_close_a": 0.9989801049232483,
-    "open_vs_close_s": 0.9988744258880615,
-    "spread_vs_close_s": 0.9986133575439453,
-    "pinch_vs_close_a": 0.9993075728416443,
-    "close_a_vs_close_s": 0.99992436170578
+    "up_vs_down": 0.675254225730896,
+    "left_vs_right": 0.6931378841400146,
+    "open_vs_close_a": 0.9989750981330872,
+    "open_vs_close_s": 0.9988692998886108,
+    "spread_vs_close_s": 0.9986081123352051,
+    "pinch_vs_close_a": 0.9993050694465637,
+    "close_a_vs_close_s": 0.9999242424964905
   }
 }

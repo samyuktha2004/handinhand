@@ -1,12 +1,85 @@
 # Progress Log
 
-**Project:** HandInHand - Cross-Lingual Sign Language Recognition  
-**Last Updated:** February 10, 2026  
-**Status:** 🔄 Phase 3 - Rendering & Cleanup
+**Project:** HandInHand - Cross-Lingual Sign Language Recognition
+**Last Updated:** February 26, 2026
+**Status:** 🔄 Phase 4 - Live Foundation
 
 ---
 
 ## Current Status
+
+### Feb 26, 2026 (cont.) — Embedding Architecture Stabilization + Skeleton Display Fix
+
+**Embedding architecture now FINAL for Phase 4. No more regenerations until Phase 5.**
+
+#### Fixes Applied This Session
+
+**Z-drop fix:** Bone streams were computing `joints[:, :2]` (dropping Z). Now `joints_3d = joints.reshape(N,3)` used in both `generate_embeddings.py` and `recognition_engine.py`. Bone and bone_motion streams are now true 3D difference vectors. GO improved most (directional sign): 0.3693 → 0.4766.
+
+**EMBEDDING_DIM truncation fix:** Hardcoded 512 was silencing bone_motion stream (only 20/162 dims used). Changed to natural size 654 in both files. New allocation: joint(165) + bone(162) + joint_motion(165) + bone_motion(162) = 654. No truncation. Literature confirms no reason to pad/truncate — use natural size.
+
+**Skeleton display fix:** `_draw_skeleton()` was missing all hand topology. Added full MediaPipe 21-point hand connections with compact array offsets (left hand +6, right hand +27) and zero-guard for undetected hands. Now shows full fingers, palm knuckles, and all 21 hand points per hand.
+
+**New research documented (RESEARCH_INSIGHTS.md §11):** SignCLIP (multilingual Strategy A validation), MLSLT CVPR 2022 (3-strategy taxonomy), MHB (handshape-aware boundary detection → maps to our probe system), wrist velocity baseline (1.17 m/s for Phase 5 segmentation).
+
+**Final Phase 4 ASL↔BSL baseline (4-stream, 3D bones, 654-dim, scale-normalized):**
+- GREETING: 0.6932 | YOU: 0.8023 | GO: 0.4766 | WHERE: 0.8992
+- **Mean: 0.7178**
+
+**Stable architecture commitment (no changes until Phase 5):**
+- Coordinate system: normalized [0,1] → world_landmarks in Phase 5
+- Streams: 4 (joint+bone+joint_motion+bone_motion), 3D
+- Dimension: 654 (natural, no truncation)
+- Normalization: position + scale (shoulder-center subtract + ÷ shoulder_width)
+- Temporal: GAP → attention in Phase 5
+
+**Future regeneration triggers:** world_landmarks switch, attention upgrade, FACE_INDICES_EMBED change. NOT: visualization, thresholds, skeleton draw.
+
+---
+
+### Feb 26, 2026 — Phase 3 Complete + Phase 4 Recognition Engine Fixes + Scale Normalization
+
+**Phase 3 COMPLETE. Phase 4 in progress.**
+
+#### Phase 4 Fixes Applied (recognition_engine.py)
+
+All 5 pre-existing bugs in the live recognition path fixed:
+
+| Bug | Fix | File |
+|-----|-----|------|
+| D1: 33-pt pose capture (no hands/face) | Compact (68,3) array with POSE_INDICES + hands + FACE_INDICES | recognition_engine.py |
+| D2: Wrong normalization (nose as shoulder) | Auto-resolved by D1 fix | — |
+| D3: Joint-only live embedding | New `_array_to_joint_feat()` + 4-stream `_compute_live_embedding()` | recognition_engine.py |
+| D4: `self.registry` undefined | → `self.asl_registry` | recognition_engine.py |
+| D5: Wrong POSE_CONNECTIONS indices | Compact indices (0-5), HAND_WRISTS (4,6)+(5,27) | recognition_engine.py |
+
+Also fixed: `generate_embeddings.py` now writes `combined_path` back to registry (idempotent via `re.sub` suffix stripping).
+
+**New 4-stream ASL↔BSL similarity baseline (with scale normalization):**
+- GREETING: 0.6664 | YOU: 0.8068 | GO: 0.3693 | WHERE: 0.8936
+- **Mean: 0.6840** (was stale joint-only 0.8240; previous 4-stream without scale: 0.6712)
+
+#### Scale Normalization Fix
+
+**Problem:** `_normalize_landmarks()` only subtracted shoulder center (position invariant) but did NOT divide by shoulder width (scale invariant). A signer 1m vs 2m from camera would produce embeddings that differ by 2× in magnitude.
+
+**Fix:** Added `÷ inter-shoulder distance` to all normalization branches in both `generate_embeddings.py` and `recognition_engine.py`. This is the industry standard (pose-format / sign.mt approach). All embeddings regenerated.
+
+**3D reference body assessment:** A 3D reference body with IK would be theoretically ideal but premature — MediaPipe z is unreliable from a single 2D camera. Shoulder-width scaling + bone vectors already capture the essential invariance. Joint angles (dot products between consecutive bones) are the natural Phase 5/6 upgrade. See `docs/research_insights/RESEARCH_INSIGHTS.md` section 10.
+
+#### Facial Landmark Architecture (face:20)
+
+Two-tier design implemented in `utils/landmarks.py`:
+- `FACE_INDICES_EXTRACT` (20 pts): stored in JSON, covers all 8 Ding & Martinez POA regions
+- `FACE_INDICES_EMBED` (7 pts): used in 512-dim embedding — original eyebrows + mouth corners + lip center
+- To expand embedding: add indices to `FACE_INDICES_EMBED` only, regenerate embeddings (no re-extraction)
+
+**Pending for Phase 4:**
+- Live webcam test (`python recognition_engine.py --debug`) — first real-world validation
+- WINDOW_SIZE tuning (currently 30 frames — test with real signing speed)
+- Camera flip mismatch investigation (live feed flipped, stored not)
+
+---
 
 ### Feb 24, 2026 — Architecture Review & Documentation Restructure
 

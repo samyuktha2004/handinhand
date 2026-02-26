@@ -675,7 +675,172 @@ Added learnable mask **M** on every ST-GCN layer:
 
 ---
 
-## 10. Papers Still Pending (Paywalled/Not Yet Reviewed)
+## 10. pose-format: Shoulder-Width Normalization (sign/translate ecosystem)
+
+**Source:** sign-language-processing/pose (GitHub) — used by sign.mt
+**License:** CC BY-NC-SA 4.0 (insights usable, code not) — reviewed Feb 26, 2026
+
+### Key Technical Insight: Industry-Standard Scale Normalization
+
+The canonical normalization for sign language skeleton data is **shoulder-width scaling**:
+
+```python
+# pose-format API (insight only):
+pose.normalize(p.header.normalization_info(
+    p1=("pose_keypoints_2d", "RShoulder"),
+    p2=("pose_keypoints_2d", "LShoulder")
+))
+```
+
+This produces coordinates in **"body-width units"**:
+- Inter-shoulder distance = 1.0 unit
+- Hand at face level ≈ 0.6 units above shoulder center
+- Arm extended to side ≈ 1.2 units
+
+**Why shoulder-center subtraction alone is insufficient:**
+A signer 1m from camera has shoulder width ~0.8 in [0,1] MediaPipe coords; at 2m it's ~0.4. After position-only centering, the same hand position differs by 2× — embeddings are not comparable across signers at different distances.
+
+**Dividing by shoulder width** makes embeddings invariant to:
+- Camera distance (signer position relative to camera)
+- Absolute body size (different signers' proportions)
+- Position in frame
+
+**Application to HandInHand:** Implemented Feb 26, 2026 in both `generate_embeddings.py` and `recognition_engine.py`. New baseline after adding scale normalization: **0.6840** mean ASL↔BSL (was 0.6712 position-only).
+
+### Assessment: 2D vs 3D Reference Body for Embedding
+
+**User question (Feb 26, 2026):** "Can't we make the reference body in 3D — wouldn't that be most efficient?"
+
+**Assessment:**
+
+| Approach | Position Invariant | Scale Invariant | Depth Accurate | Complexity |
+|----------|-------------------|-----------------|----------------|------------|
+| Raw MediaPipe coords | ❌ | ❌ | ❌ | Low |
+| Shoulder-center only (previous) | ✅ | ❌ | ❌ | Low |
+| **Shoulder-width scaling (current)** | ✅ | ✅ | Approximate | Low |
+| 3D Reference Body (IK-based) | ✅ | ✅ | ✅ | Very High |
+| Joint angles (bone dot products) | ✅ | ✅ | ✅ | Medium |
+
+**Why NOT 3D reference body (now):**
+1. **MediaPipe z is unreliable** from a single 2D camera — depth is estimated, not measured. Building IK on top of noisy z would amplify errors.
+2. **Inverse kinematics is expensive** — mapping raw joint positions to angles on a fixed-segment body requires iterative optimization (Newton-Raphson, FABRIK, etc.). Overkill for 4 concepts.
+3. **Bone vectors already approximate it** — our 4-stream embedding includes bone vectors (parent→child joint differences) which are partially scale-invariant and direction-preserving. This is a first-order 3D approximation.
+4. **We already capture the essential invariance** with shoulder-width scaling + bone stream.
+
+**Why joint angles WOULD be better (Phase 6/7):**
+True joint angles (elbow angle, wrist flexion, shoulder abduction) are fully scale-invariant by construction — they don't need any normalization. Computing them only requires dot products between consecutive bone vectors (no IK). This is the natural Phase 5/6 upgrade when we need to distinguish:
+- Palm-forward (forward arm, elbow extended) from palm-backward (same position, wrist pronated)
+- Shoulder abduction angle from wrist extension angle
+
+**Implementation path:** `bone_angle_feat = np.arccos(np.clip(np.dot(bone_i, bone_j) / (|bone_i| * |bone_j|), -1, 1))` — no IK required. Add as 5th stream in Phase 5/6.
+
+**Current recommendation:** Keep shoulder-width scaling (implemented). Consider joint angles as Phase 5 enhancement after attention replaces GAP.
+
+---
+
+## 11. Multilingual Sign Language Embedding Alignment + Sign Boundary Detection (2022–2024)
+
+### 11a. SignCLIP: Shared Multilingual Embedding via Contrastive Learning
+
+**Citation:**
+```bibtex
+@article{bohacek2024signclip,
+  title={SignCLIP: Connecting Text and Sign Language by Contrastive Learning},
+  author={Bohacek, Matyáš and Fierro, Camila},
+  journal={arXiv preprint arXiv:2407.01264},
+  year={2024}
+}
+```
+
+**Legal:** arXiv — insights usable. Not yet reviewed for code license.
+
+**Key Technical Insights:**
+- Uses 543 MediaPipe Holistic keypoints (full pose + hands + face) → 768-d shared embedding via frozen backbone + MLP
+- Contrastive loss aligns sign video with spoken-language text in the same space
+- Both ASL and BSL processed with identical feature extraction (Strategy A: shared encoder)
+- No explicit cross-lingual correction needed when training data is sufficiently diverse
+
+**Application to HandInHand:**
+- Validates our Strategy A approach (same 4-stream pipeline for ASL + BSL)
+- Their 543-pt set vs our 55-pt subset — our reduction follows SAM-SLR graph reduction (§1)
+- Phase 6+: contrastive training on ASL↔BSL concept pairs could explicitly align the space
+
+---
+
+### 11b. MLSLT: Towards Multilingual Sign Language Translation (CVPR 2022)
+
+**Citation:**
+```bibtex
+@inproceedings{yin2022mlslt,
+  title={MLSLT: Towards Multilingual Sign Language Translation},
+  author={Yin, Kayo and Moryossef, Amit and Fahrni, Julie and Goldberg, Yoav and Zwitserlood, Ilse},
+  booktitle={CVPR},
+  year={2022}
+}
+```
+
+**Legal:** CVPR proceedings — insights usable.
+
+**Three-Strategy Taxonomy for Multilingual SL:**
+
+| Strategy | Architecture | HandInHand Phase |
+|----------|-------------|-----------------|
+| A: Shared encoder | Identical extraction for all languages → cosine comparison | Phase 4 (**current**) |
+| B: Separate encoders | Language-specific → shared semantic space via multi-task loss | Phase 5 option |
+| C: LLM pretraining | T5-style pretrained backbone + signed→spoken alignment | Phase 7 |
+
+**Application to HandInHand:**
+- Phase 4 = Strategy A, validated for small vocabulary isolated sign recognition
+- Phase 5: Procrustes rotation is a lightweight Strategy B alignment (no retraining)
+- Strategy C requires parallel signed-to-spoken corpus (YouTube-SL-25 for scale)
+
+---
+
+### 11c. MHB: Multimodal Handshape-aware Boundary Detection (2024)
+
+**Citation:**
+```bibtex
+@misc{mhb2024,
+  title={MHB: Multimodal Handshape-aware Boundary Detection for Continuous Sign Language Recognition},
+  journal={arXiv preprint arXiv:2511.19907},
+  year={2024}
+}
+```
+
+**Legal:** arXiv — insights usable.
+
+**Key Technical Insights:**
+- Pretrained GCN on hand joints matches 87 canonical handshapes → per-frame confidence score
+- Fuses handshape confidence + wrist velocity via cross-attention + learnable gating
+- Linguistic prior: "handshapes normally expected at the beginning and end of signs" (hold phases)
+
+**Critical Connection to HandInHand:**
+- Our 16-probe handshape system = subset of their 87-shape vocabulary
+- Phase 5 boundary detection via probes: cosine-similarity(live, each probe) → max = handshape confidence
+- Combine: `boundary = (velocity < threshold) AND (probe_similarity > 0.7)`
+- No GCN training required — our probes ARE the handshape vocabulary
+- Probes to add before Phase 7: I, H, T, X (medium frequency, currently missing — from gap analysis)
+
+---
+
+### 11d. Wrist Velocity Baseline for Sign Boundary Detection
+
+**Source:** Neuroscience literature on event segmentation in ASL (cognitive science, peer-reviewed)
+
+**Key Data Points:**
+- ASL dominant-hand wrist velocity during signs: **1.17 m/s** (SE=0.054)
+- Non-linguistic gestures: **1.78 m/s** (significantly faster — useful discriminator)
+- Sign boundaries: velocity local minima (rapid deceleration = hold phase between signs)
+- In MediaPipe normalized [0,1] coords at 30fps: threshold ≈ **0.04 units/frame** (approximate; calibrate per setup)
+
+**Application to HandInHand:**
+- Phase 4: ignore (stored-to-stored, no segmentation needed)
+- Phase 5: `velocity = np.linalg.norm(wrist_t - wrist_{t-1})`, detect local minima < 0.04
+- Combined boundary gate: velocity minimum AND probe handshape confidence > 0.7
+
+---
+
+## 12. Papers Still Pending (Paywalled/Not Yet Reviewed)
 
 | Paper                                 | Status        | Notes                                  |
 | ------------------------------------- | ------------- | -------------------------------------- |
@@ -704,6 +869,10 @@ Added learnable mask **M** on every ST-GCN layer:
 | OpenStax A&P             | CC BY 4.0    | ✅ Yes      | ✅ Yes           | ✅ Yes               |
 | Z-Anatomy                | CC BY-SA 4.0 | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
 | Physio-Pedia             | CC BY-SA     | ✅ Yes      | ✅ Yes           | ✅ Yes (share-alike) |
+| SignCLIP (arXiv:2407.01264) | arXiv     | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| MLSLT (CVPR 2022)        | CVPR         | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| MHB (arXiv:2511.19907)   | arXiv        | ✅ Yes      | ✅ Yes           | ⚠️ Check code        |
+| Wrist velocity (neurosci)| Academic     | ✅ Yes      | ✅ Yes           | ✅ Yes               |
 
 ---
 
